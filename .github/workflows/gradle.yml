@@ -1,4 +1,4 @@
-name: Java CI with Gradle (Windows)
+name: Java CI with Gradle (Windows CI)
 
 on:
   push:
@@ -8,7 +8,8 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest  # <-- ВАЖНО: меняем ubuntu на windows
+    # Используем Windows, так как вы просили вариант для Windows
+    runs-on: windows-latest 
 
     steps:
       - uses: actions/checkout@v4
@@ -20,15 +21,15 @@ jobs:
           distribution: 'temurin'
 
       - name: Build with Gradle
-        run: .\gradlew.bat build  # <-- ВАЖНО: используем .bat
+        run: .\gradlew.bat build
 
-      - name: Start SUT and wait (PowerShell)
-        shell: pwsh  # <-- ВАЖНО: используем PowerShell вместо bash
+      - name: Start SUT and wait
+        shell: pwsh
         run: |
           # Запускаем приложение в фоне
           Start-Process -FilePath "java" -ArgumentList "-jar", ".\artifacts\app-order.jar"
           
-          # Ждем запуска (пробуем достучаться до порта)
+          # Ждем, пока порт 9999 станет доступен
           \$maxAttempts = 30
           \$attempt = 0
           \$url = "http://localhost:9999"
@@ -48,4 +49,12 @@ jobs:
           }
 
       - name: Run tests
-        run: .\gradlew.bat test  # <-- ВАЖНО: используем .bat
+        run: .\gradlew.bat test
+
+      - name: Upload Test Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: build/reports/tests/test/
+
