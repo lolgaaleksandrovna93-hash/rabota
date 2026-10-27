@@ -1,4 +1,4 @@
-name: Java CI with Gradle (Windows CI)
+name: Java CI with Gradle
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-latest  # Важно: windows-latest имеет предустановленный Chrome
 
     steps:
       - name: Checkout code
@@ -26,19 +26,14 @@ jobs:
       - name: Start SUT and wait for readiness
         shell: pwsh
         run: |
-          # ВАЖНО: проверьте имя jar-файла и путь к нему
-          # Вариант 1: если в build.gradle настроена папка artifacts
-          # \$jarPath = ".\artifacts\app-order.jar"
+          # Проверьте имя вашего jar файла!
+          \$jarPath = ".\build\libs\app-order.jar" 
           
-          # Вариант 2: стандартная сборка Gradle (чаще всего)
-          \$jarPath = ".\build\libs\app-order.jar"
-
           if (!(Test-Path \$jarPath)) {
-            Write-Error "Jar file not found at \$jarPath. Check build.gradle configuration."
+            Write-Error "Jar file not found at \$jarPath"
             exit 1
           }
 
-          Write-Host "Starting SUT from \$jarPath"
           Start-Process -FilePath "java" -ArgumentList "-jar", \$jarPath
 
           \$maxAttempts = 30
@@ -60,7 +55,7 @@ jobs:
           }
 
           if ($attempt -eq $maxAttempts) {
-            Write-Error "❌ Failed to start SUT within timeout."
+            Write-Error "❌ Failed to start SUT"
             exit 1
           }
 
@@ -73,3 +68,4 @@ jobs:
         with:
           name: test-reports
           path: build/reports/tests/test/
+
