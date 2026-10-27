@@ -1,4 +1,4 @@
-name: Java CI with Gradle
+name: Java CI with Gradle (Windows CI)
 
 on:
   push:
@@ -8,7 +8,8 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Используем Windows, так как вы просили вариант для Windows
+    runs-on: windows-latest 
 
     steps:
       - uses: actions/checkout@v4
@@ -20,22 +21,40 @@ jobs:
           distribution: 'temurin'
 
       - name: Build with Gradle
-        run: ./gradlew build
+        run: .\gradlew.bat build
 
       - name: Start SUT and wait
+        shell: pwsh
         run: |
-          java -jar ./artifacts/app-order.jar &
-          export APP_PID=\$!
-          # Wait for SUT to be ready (simple HTTP check)
-          for i in {1..30}; do
-            if curl -s -o /dev/null -w "%{http_code}" http://localhost:9999 | grep -q "200"; then
-              echo "SUT is ready"
-              break
-            fi
-            echo "Waiting for SUT... attempt \$i"
-            sleep 2
-          done
-        shell: bash
+          # Запускаем приложение в фоне
+          Start-Process -FilePath "java" -ArgumentList "-jar", ".\artifacts\app-order.jar"
+          
+          # Ждем, пока порт 9999 станет доступен
+          \$maxAttempts = 30
+          \$attempt = 0
+          \$url = "http://localhost:9999"
+          
+          while ($attempt -lt $maxAttempts) {
+            try {
+              $response = Invoke-WebRequest -Uri $url -Method Head -TimeoutSec 5 -ErrorAction Stop
+              if (\$response.StatusCode -eq 200) {
+                Write-Host "SUT is ready!"
+                break
+              }
+            } catch {
+              Write-Host "Waiting for SUT... attempt $($attempt + 1)"
+            }
+            \$attempt++
+            Start-Sleep -Seconds 2
+          }
 
       - name: Run tests
-        run: ./gradlew test
+        run: .\gradlew.bat test
+
+      - name: Upload Test Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: build/reports/tests/test/
+
