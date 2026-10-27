@@ -24,12 +24,20 @@ public class CardOrderValidationTest {
         chromedriver().setup();
 
         ChromeOptions options = new ChromeOptions();
-        options.addArguments("--disable-dev-shm-usage");
-        options.addArguments("--no-sandbox");
-        options.addArguments("--window-size=1920,1080");
+        
+        // --- ВАЖНЫЕ ФЛАГИ ДЛЯ CI (GitHub Actions) ---
+        options.addArguments("--headless=new");          // Запуск без графического интерфейса (ОБЯЗАТЕЛЬНО для CI)
+        options.addArguments("--no-sandbox");             // Отключаем песочницу (требуется для контейнеров)
+        options.addArguments("--disable-dev-shm-usage"); // Увеличиваем память для рендеринга
+        options.addArguments("--window-size=1920,1080"); // Фиксируем размер окна
+        // --------------------------------------------
 
         driver = new ChromeDriver(options);
+        
+        // В headless-режиме maximize() может не сработать или быть лишним, 
+        // размер уже задан через window-size. Оставляем для совместимости.
         driver.manage().window().maximize();
+        
         wait = new WebDriverWait(driver, Duration.ofSeconds(30));
     }
 
