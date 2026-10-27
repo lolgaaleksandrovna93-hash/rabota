@@ -11,82 +11,68 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout code 📁
         uses: actions/checkout@v4
 
-      - name: Set up JDK 11
+      # Установка браузера и драйверов через официальное действие
+      - name: Install Google Chrome 🦊
+        uses: actions/setup-chromium@v1
+        with:
+          browser: chrome-stable
+          driver: chromedriver
+          # Это действие автоматически добавляет переменную окружения WEBDRIVER_CHROME_DRIVER,
+          # поэтому в gradlew.bat test не нужно передавать путь к драйверу вручную.
+      
+      - name: Set up JDK 11 ☕️
         uses: actions/setup-java@v4
         with:
           java-version: '11'
           distribution: 'temurin'
 
-      # НОВЫЙ ШАГ: Скачиваем ChromeDriver, совместимый с браузером в CI
-      - name: Download ChromeDriver
-        shell: pwsh
-        run: |
-          # Получаем версию Chrome, установленного в среде
-          \$chromeVersion = (Get-Item "C:\Program Files\Google\Chrome\Application\chrome.exe").VersionInfo.FileVersion
-          $majorVersion = ($chromeVersion -split '\.')
-          
-          Write-Host "Detected Chrome version: $chromeVersion (Major: $majorVersion)"
-          
-          # Формируем ссылку на скачивание драйвера для этой версии
-          $url = "https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/$majorVersion.0.0/win64/chromedriver-win64.zip"
-          
-          Write-Host "Downloading driver from: \$url"
-          
-          # Скачиваем и распаковываем
-          Invoke-WebRequest -Uri \$url -OutFile "chromedriver.zip"
-          Expand-Archive -Path "chromedriver.zip" -DestinationPath "."
-          
-          # Перемещаем исполняемый файл в корень (или куда удобно), чтобы Selenium его нашел
-          Move-Item -Path ".\win64\chromedriver.exe" -Destination ".\chromedriver.exe"
-          
-          Write-Host "ChromeDriver downloaded and ready."
-
-      - name: Build project
+      - name: Build project ✨
         run: .\gradlew.bat build --no-daemon
 
-      - name: Start SUT and wait for readiness
+      # Запускаем приложение с профилем "ci", чтобы отключить логирование и другие лишние вещи
+      - name: Start SUT and wait for readiness 🚀
         shell: pwsh
         run: |
-          \$jarPath = ".\build\libs\app-order.jar" # Проверьте имя вашего jar!
+          $jarPath = "./build/libs/app-order.jar" # Проверьте имя вашего jar!
           
-          if (!(Test-Path \$jarPath)) {
-            Write-Error "Jar file not found at \$jarPath"
+          if (!(Test-Path $jarPath)) {
+            Write-Error "Jar file not found at $jarPath"
             exit 1
           }
 
-          Start-Process -FilePath "java" -ArgumentList "-jar", \$jarPath
+          # Запускаем с флагом ci, если он у вас есть в Spring Boot приложении
+          Start-Process -FilePath "java" -ArgumentList "-jar", "$jarPath", "--server.port=9999", "--spring.profiles.active=ci"
 
-          \$maxAttempts = 30
-          \$attempt = 0
-          \$url = "http://localhost:9999"
+          # Проверяем готовность по конкретному маршруту /actuator/health или другому вашему эндпоинту
+          $maxAttempts = 30
+          $attempt = 0
+          $url = "http://localhost:9999/actuator/health"
 
           while ($attempt -lt $maxAttempts) {
             try {
-              $response = Invoke-WebRequest -Uri $url -Method Head -TimeoutSec 5 -ErrorAction Stop
-              if (\$response.StatusCode -eq 200) {
-                Write-Host "✅ SUT is ready!"
+              $response = Invoke-WebRequest -Uri $url -Method Get -TimeoutSec 5 -ErrorAction Stop | ConvertFrom-Json
+              if ($response.status -eq "UP") { # Или другой ваш статус успеха
+                Write-Host "🟢 SUT is ready!"
                 break
               }
-            } catch {
-              Write-Host "⏳ Waiting for SUT... attempt $($attempt + 1)"
-            }
-            \$attempt++
+            } catch {}
+            
+            $attempt++
             Start-Sleep -Seconds 2
           }
 
-          if ($attempt -eq $maxAttempts) {
-            Write-Error "❌ Failed to start SUT"
+          if ($attempt -ge $maxAttempts) {
+            Write-Error "🛑 Failed to start SUT"
             exit 1
           }
 
-      - name: Run tests
-        # ВАЖНО: Передаем путь к драйверу через системное свойство
-        run: .\gradlew.bat test -Dwebdriver.chrome.driver="./chromedriver.exe" --no-daemon
+      - name: Run tests 🎯
+        run: .\gradlew.bat test --no-daemon
 
-      - name: Upload Test Report
+      - name: Upload Test Report 🗃️
         if: always()
         uses: actions/upload-artifact@v4
         with:
