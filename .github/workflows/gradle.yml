@@ -1,56 +1,63 @@
 name: Java CI with Gradle (Windows CI)
-
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   build:
-    # Используем Windows, так как вы просили вариант для Windows
     runs-on: windows-latest 
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK 11
+      # ❗️ Установка JDK обязательна!
+      - name: Set up JDK 17 (или 11)
         uses: actions/setup-java@v4
         with:
-          java-version: '11'
+          java-version: '17' # Или '11'
           distribution: 'temurin'
 
-      - name: Build with Gradle
-        run: .\gradlew.bat build
+      # ❗️ Новый шаг! Устанавливаем Chrome
+      - name: Install Google Chrome
+        uses: actions/setup-chrome@v2
+        with:
+          chrome-version: stable
 
-      - name: Start SUT and wait
+      # ❗️ Настройка WebDriverManager
+      # Если вы используете WDM, добавьте этот флаг к сборке,
+      # чтобы он скачал хромдрайвер под текущую версию Chrome.
+      # Флаг --system-properties нужен только если у вас старая версия WDM.
+      - name: Build project and create artifacts
+        run: .\gradlew.bat build --stacktrace --system-properties "webdriver.chrome.driver=src/test/resources/chromedriver.exe"
+
+      # Запуск приложения
+      - name: Start SUT in background
         shell: pwsh
         run: |
-          # Запускаем приложение в фоне
-          Start-Process -FilePath "java" -ArgumentList "-jar", ".\artifacts\app-order.jar"
-          
-          # Ждем, пока порт 9999 станет доступен
-          \$maxAttempts = 30
-          \$attempt = 0
-          \$url = "http://localhost:9999"
-          
-          while ($attempt -lt $maxAttempts) {
-            try {
-              $response = Invoke-WebRequest -Uri $url -Method Head -TimeoutSec 5 -ErrorAction Stop
-              if (\$response.StatusCode -eq 200) {
-                Write-Host "SUT is ready!"
-                break
-              }
-            } catch {
-              Write-Host "Waiting for SUT... attempt $($attempt + 1)"
+          $process = Start-Process `
+            -FilePath "java" `
+            -ArgumentList "-jar", ".\\build\\libs\\raboata.jar" `
+            -NoNewWindow `
+            -RedirectStandardOutput "./sut.log" `
+            -PassThru # Возвращает объект процесса
+
+          Write-Host "Application started with PID $($process.Id). Waiting for readiness..."
+
+          while ($true) {
+            if ((Get-Content ./sut.log | Select-String -SimpleMatch "Server is running") -ne $null) {
+              Write-Host "✅ Application is ready!"
+              break;
             }
-            \$attempt++
-            Start-Sleep -Seconds 2
+            Start-Sleep -Milliseconds 200
           }
 
+      # Тесты
       - name: Run tests
-        run: .\gradlew.bat test
+        run: .\gradlew.bat test --info
 
+      # Отчёты
       - name: Upload Test Report
         if: always()
         uses: actions/upload-artifact@v4
