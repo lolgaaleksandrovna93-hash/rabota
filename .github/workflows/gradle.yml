@@ -1,4 +1,4 @@
-name: Java CI with Gradle
+name: Java CI with Gradle (Windows)
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest  # <-- ВАЖНО: меняем ubuntu на windows
 
     steps:
       - uses: actions/checkout@v4
@@ -20,22 +20,32 @@ jobs:
           distribution: 'temurin'
 
       - name: Build with Gradle
-        run: ./gradlew build
+        run: .\gradlew.bat build  # <-- ВАЖНО: используем .bat
 
-      - name: Start SUT and wait
+      - name: Start SUT and wait (PowerShell)
+        shell: pwsh  # <-- ВАЖНО: используем PowerShell вместо bash
         run: |
-          java -jar ./artifacts/app-order.jar &
-          export APP_PID=\$!
-          # Wait for SUT to be ready (simple HTTP check)
-          for i in {1..30}; do
-            if curl -s -o /dev/null -w "%{http_code}" http://localhost:9999 | grep -q "200"; then
-              echo "SUT is ready"
-              break
-            fi
-            echo "Waiting for SUT... attempt \$i"
-            sleep 2
-          done
-        shell: bash
+          # Запускаем приложение в фоне
+          Start-Process -FilePath "java" -ArgumentList "-jar", ".\artifacts\app-order.jar"
+          
+          # Ждем запуска (пробуем достучаться до порта)
+          \$maxAttempts = 30
+          \$attempt = 0
+          \$url = "http://localhost:9999"
+          
+          while ($attempt -lt $maxAttempts) {
+            try {
+              $response = Invoke-WebRequest -Uri $url -Method Head -TimeoutSec 5 -ErrorAction Stop
+              if (\$response.StatusCode -eq 200) {
+                Write-Host "SUT is ready!"
+                break
+              }
+            } catch {
+              Write-Host "Waiting for SUT... attempt $($attempt + 1)"
+            }
+            \$attempt++
+            Start-Sleep -Seconds 2
+          }
 
       - name: Run tests
-        run: ./gradlew test
+        run: .\gradlew.bat test  # <-- ВАЖНО: используем .bat
