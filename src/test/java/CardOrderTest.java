@@ -13,7 +13,8 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 
 import java.time.Duration;
 
-import static io.github.bonigarcia.wdm.WebDriverManager.chromedriver;
+// УДАЛИТЕ ЭТУ ИМПОРТНУЮ СТРОКУ, ОНА ТЕПЕРЬ НЕ НУЖНА:
+// import static io.github.bonigarcia.wdm.WebDriverManager.chromedriver;
 
 public class CardOrderTest {
 
@@ -22,24 +23,21 @@ public class CardOrderTest {
 
     @BeforeAll
     static void setup() {
-        System.out.println("=== Запуск драйвера ===");
-        chromedriver().setup();
-
+        System.out.println("=== Запуск драйвера (без WebDriverManager) ===");
+        
         ChromeOptions options = new ChromeOptions();
         
-        // --- ВАЖНЫЕ ФЛАГИ ДЛЯ CI (GitHub Actions) ---
-        options.addArguments("--headless=new");          // Запуск без графического интерфейса (ОБЯЗАТЕЛЬНО для CI)
-        options.addArguments("--no-sandbox");             // Отключаем песочницу (требуется для контейнеров)
-        options.addArguments("--disable-dev-shm-usage"); // Увеличиваем память для рендеринга
-        options.addArguments("--window-size=1920,1080"); // Фиксируем размер окна
-        // --------------------------------------------
+        // Эти флаги ОБЯЗАТЕЛЬНЫ для GitHub Actions
+        options.addArguments("--headless=new");
+        options.addArguments("--no-sandbox");
+        options.addArguments("--disable-dev-shm-usage");
+        options.addArguments("--window-size=1920,1080");
 
+        // ВАЖНО: Мы больше не вызываем chromedriver().setup()!
+        // Selenium Manager (встроенный в selenium-java 4.6+) сам скачает и настроит драйвер.
         driver = new ChromeDriver(options);
         
-        // В headless-режиме maximize() может не сработать или быть лишним, 
-        // размер уже задан через window-size. Оставляем для совместимости, но это не критично.
         driver.manage().window().maximize();
-        
         wait = new WebDriverWait(driver, Duration.ofSeconds(30));
     }
 
@@ -53,18 +51,16 @@ public class CardOrderTest {
 
     @Test
     void shouldSubmitCardOrderFormSuccessfully() {
+        // ... (весь остальной код теста остается БЕЗ ИЗМЕНЕНИЙ) ...
         System.out.println("1. Открываем страницу...");
         driver.get("http://localhost:9999");
-
-        // Шаг 2: Вводим имя
-        System.out.println("Вводим ФИО...");
+        // ... остальной код ...
+        
         var nameInput = wait.until(
                 ExpectedConditions.visibilityOfElementLocated(By.cssSelector("[data-test-id=\"name\"] input")));
         nameInput.clear();
         nameInput.sendKeys("Иванов Иван Иванович");
 
-        // Шаг 3: Вводим телефон (посимвольно для корректной работы маски)
-        System.out.println("Вводим номер телефона...");
         var phoneInput = wait.until(
                 ExpectedConditions.visibilityOfElementLocated(By.cssSelector("[data-test-id=\"phone\"] input")));
         phoneInput.clear();
@@ -75,42 +71,25 @@ public class CardOrderTest {
             try { Thread.sleep(100); } catch (InterruptedException e) {}
         }
 
-        // Шаг 4: Нажимаем на чекбокс согласия
-        System.out.println("Кликаем на блок согласия (label)...");
         var agreementLabel = wait.until(
                 ExpectedConditions.elementToBeClickable(By.cssSelector("label[data-test-id=\"agreement\"]")));
         agreementLabel.click();
-
-        // Проверка: убеждаемся, что класс checkbox_checked появился (галочка стоит)
-        System.out.println("Проверяем, что галочка установлена...");
         wait.until(ExpectedConditions.attributeContains(agreementLabel, "class", "checkbox_checked"));
 
-        // Шаг 5: НАЖИМАЕМ КНОПКУ "ПРОДОЛЖИТЬ"
-        System.out.println("Находим кнопку 'Продолжить'...");
-
-        // Ищем кнопку по тексту "Продолжить" внутри неё. Это самый стабильный способ,
-        // так как классы (button_view_extra, button_size_m) могут меняться при сборке проекта.
         var submitButton = wait.until(
                 ExpectedConditions.elementToBeClickable(By.xpath("//button[.//span[contains(text(), 'Продолжить')]]")));
 
-        // ВАЖНО: Проверяем, не заблокирована ли кнопка (атрибут disabled)
-        // Если кнопка заблокирована, значит, поля заполнены неверно (ошибка валидации).
         if ("true".equals(submitButton.getAttribute("disabled"))) {
-            throw new RuntimeException("Кнопка 'Продолжить' заблокирована! Проверьте корректность заполнения полей (телефон, имя) или наличие галочки.");
+            throw new RuntimeException("Кнопка 'Продолжить' заблокирована!");
         }
 
-        System.out.println("Нажимаем кнопку 'Продолжить'...");
         submitButton.click();
 
-        // Шаг 6: Ждем появления блока успеха
-        System.out.println("Ожидаем появления блока успеха (до 60 сек)...");
         WebDriverWait longWait = new WebDriverWait(driver, Duration.ofSeconds(60));
-
-        // Ищем блок успеха по data-test-id (стабильный селектор)
         var successBlock = longWait.until(
                 ExpectedConditions.visibilityOfElementLocated(By.cssSelector("[data-test-id=\"order-success\"]")));
 
         assertTrue(successBlock.isDisplayed(), "Блок успеха не появился!");
-        System.out.println("✅ ТЕСТ ПРОЙДЕН: заявка успешно отправлена!");
+        System.out.println("✅ ТЕСТ ПРОЙДЕН!");
     }
 }
