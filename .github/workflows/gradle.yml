@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest  # Важно: windows-latest имеет предустановленный Chrome
+    runs-on: windows-latest
 
     steps:
       - name: Checkout code
@@ -20,14 +20,37 @@ jobs:
           java-version: '11'
           distribution: 'temurin'
 
+      # НОВЫЙ ШАГ: Скачиваем ChromeDriver, совместимый с браузером в CI
+      - name: Download ChromeDriver
+        shell: pwsh
+        run: |
+          # Получаем версию Chrome, установленного в среде
+          \$chromeVersion = (Get-Item "C:\Program Files\Google\Chrome\Application\chrome.exe").VersionInfo.FileVersion
+          $majorVersion = ($chromeVersion -split '\.')
+          
+          Write-Host "Detected Chrome version: $chromeVersion (Major: $majorVersion)"
+          
+          # Формируем ссылку на скачивание драйвера для этой версии
+          $url = "https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/$majorVersion.0.0/win64/chromedriver-win64.zip"
+          
+          Write-Host "Downloading driver from: \$url"
+          
+          # Скачиваем и распаковываем
+          Invoke-WebRequest -Uri \$url -OutFile "chromedriver.zip"
+          Expand-Archive -Path "chromedriver.zip" -DestinationPath "."
+          
+          # Перемещаем исполняемый файл в корень (или куда удобно), чтобы Selenium его нашел
+          Move-Item -Path ".\win64\chromedriver.exe" -Destination ".\chromedriver.exe"
+          
+          Write-Host "ChromeDriver downloaded and ready."
+
       - name: Build project
         run: .\gradlew.bat build --no-daemon
 
       - name: Start SUT and wait for readiness
         shell: pwsh
         run: |
-          # Проверьте имя вашего jar файла!
-          \$jarPath = ".\build\libs\app-order.jar" 
+          \$jarPath = ".\build\libs\app-order.jar" # Проверьте имя вашего jar!
           
           if (!(Test-Path \$jarPath)) {
             Write-Error "Jar file not found at \$jarPath"
@@ -60,7 +83,8 @@ jobs:
           }
 
       - name: Run tests
-        run: .\gradlew.bat test --no-daemon
+        # ВАЖНО: Передаем путь к драйверу через системное свойство
+        run: .\gradlew.bat test -Dwebdriver.chrome.driver="./chromedriver.exe" --no-daemon
 
       - name: Upload Test Report
         if: always()
@@ -68,4 +92,3 @@ jobs:
         with:
           name: test-reports
           path: build/reports/tests/test/
-
