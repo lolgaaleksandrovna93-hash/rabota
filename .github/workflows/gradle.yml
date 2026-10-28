@@ -99,5 +99,3 @@ jobs:
           name: test-reports
           path: build/reports/tests/test/
 
-          name: test-reports
-          path: build/reports/tests/test/
