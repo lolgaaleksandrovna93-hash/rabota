@@ -20,7 +20,6 @@ public class CardOrderTest {
 
     @BeforeAll
     static void setup() {
-        // Читаем APP_URL из переменных окружения. Если нет — дефолт localhost:9999
         appUrl = System.getenv("APP_URL") != null ? System.getenv("APP_URL") : "http://localhost:9999";
         System.out.println("[SETUP] Target URL: " + appUrl);
 
@@ -33,14 +32,11 @@ public class CardOrderTest {
         }
 
         ChromeOptions options = new ChromeOptions();
-
-        // --- Headless-режим и флаги для серверов сборки (CI) ---
-        options.addArguments("--headless");                 // ✅ Требуемый флаг из задания
-        options.addArguments("--no-sandbox");               // ✅ Обязательно для CI/контейнеров
-        options.addArguments("--disable-dev-shm-usage");  // ✅ Обход лимитов памяти в CI
-        options.addArguments("--window-size=1920,1080");  // ✅ Размер окна (иначе рендер может быть мобильным)
-        options.addArguments("--disable-blink-features=AutomationControlled"); // ✅ Маскирует автоматизацию
-        // -------------------------------------------------------
+        options.addArguments("--headless");
+        options.addArguments("--no-sandbox");
+        options.addArguments("--disable-dev-shm-usage");
+        options.addArguments("--window-size=1920,1080");
+        options.addArguments("--disable-blink-features=AutomationControlled");
 
         driver = new ChromeDriver(options);
         wait = new WebDriverWait(driver, Duration.ofSeconds(60));
@@ -60,34 +56,25 @@ public class CardOrderTest {
         System.out.println("[TEST] Opening page: " + appUrl);
         driver.get(appUrl);
 
-        System.out.println("[TEST] Current URL: " + driver.getCurrentUrl());
-        System.out.println("[TEST] Page title: " + driver.getTitle());
-
         var nameInput = wait.until(
                 ExpectedConditions.visibilityOfElementLocated(By.cssSelector("[data-test-id=\"name\"] input")));
-        System.out.println("[TEST] Name input found.");
         nameInput.clear();
         nameInput.sendKeys("Иванов Иван Иванович");
 
         var phoneInput = wait.until(
                 ExpectedConditions.visibilityOfElementLocated(By.cssSelector("[data-test-id=\"phone\"] input")));
-        System.out.println("[TEST] Phone input found.");
         phoneInput.clear();
-
-        String phoneNumber = "+79001234567";
-        phoneInput.sendKeys(phoneNumber);
+        phoneInput.sendKeys("+79001234567");
 
         var agreementLabel = wait.until(
                 ExpectedConditions.elementToBeClickable(By.cssSelector("label[data-test-id=\"agreement\"]")));
-        System.out.println("[TEST] Agreement label found and clickable.");
         agreementLabel.click();
 
+        // Ждём, пока чекбокс станет отмеченным (по классу)
         wait.until(ExpectedConditions.attributeContains(agreementLabel, "class", "checkbox_checked"));
-        System.out.println("[TEST] Agreement checkbox marked.");
 
         var submitButton = wait.until(
                 ExpectedConditions.elementToBeClickable(By.xpath("//button[.//span[contains(text(), 'Продолжить')]]")));
-        System.out.println("[TEST] Submit button found and clickable.");
 
         if ("true".equals(submitButton.getAttribute("disabled"))) {
             throw new RuntimeException("Кнопка 'Продолжить' заблокирована!");
