@@ -16,7 +16,7 @@ public class CardOrderValidationTest {
 
     private static WebDriver driver;
     private static WebDriverWait wait;
-    private static String appUrl; // <-- Добавляем поле для URL
+    private static String appUrl;
 
     @BeforeAll
     static void setupAll() {
@@ -34,15 +34,18 @@ public class CardOrderValidationTest {
         }
 
         ChromeOptions options = new ChromeOptions();
-        options.addArguments("--headless=new");
-        options.addArguments("--no-sandbox");
-        options.addArguments("--disable-dev-shm-usage");
-        options.addArguments("--window-size=1920,1080");
-        options.addArguments("--disable-blink-features=AutomationControlled");
+
+        // --- HEADLESS-РЕЖИМ ДЛЯ CI (СЕРВЕРЫ БЕЗ ГРАФИКИ) ---
+        options.addArguments("--headless=new");              // ✅ Включает headless (современная версия)
+        options.addArguments("--no-sandbox");               // ✅ Обязательно для CI/контейнеров
+        options.addArguments("--disable-dev-shm-usage");   // ✅ Обход лимитов памяти в CI
+        options.addArguments("--window-size=1920,1080");   // ✅ Размер окна (иначе в headless может быть мобильный вид)
+        options.addArguments("--disable-blink-features=AutomationControlled"); // ✅ Маскирует автоматизацию
+        // --------------------------------------------------
 
         driver = new ChromeDriver(options);
         wait = new WebDriverWait(driver, Duration.ofSeconds(60));
-        System.out.println("[SETUP] Chrome started successfully.");
+        System.out.println("[SETUP] Chrome started successfully in headless mode.");
     }
 
     @AfterAll
@@ -56,7 +59,7 @@ public class CardOrderValidationTest {
     @Test
     void shouldShowValidationErrorWhenNameIsInvalid() {
         System.out.println("1. Открываем страницу: " + appUrl);
-        driver.get(appUrl); // <-- Используем appUrl вместо хардкода
+        driver.get(appUrl);
 
         System.out.println("[TEST] Current URL: " + driver.getCurrentUrl());
         System.out.println("[TEST] Page title: " + driver.getTitle());
