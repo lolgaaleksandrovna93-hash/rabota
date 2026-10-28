@@ -31,83 +31,91 @@ jobs:
         shell: cmd
 
       - name: Start SUT and wait for readiness 🚀
-        shell: pwsh
+        shell: cmd
         run: |
-          # 1. Поиск JAR файла
-          # Используем простую команду без лишних переменных окружения
-          \$jarFile = Get-ChildItem -Path "./build/libs" -Filter "app-order*.jar" | Select-Object -First 1
+          @echo off
+          setlocal enabledelayedexpansion
 
-          if ($null -eq $jarFile) {
-            Write-Error "❌ КРИТИЧЕСКАЯ ОШИБКА: JAR файл не найден в ./build/libs!"
-            Write-Host "Доступные файлы в папке:"
-            Get-ChildItem -Path "./build/libs" -Filter "*.jar" | ForEach-Object { Write-Host "  - $($_.Name)" }
-            exit 1
-          }
+          REM 1. Поиск JAR файла
+          echo [INFO] Поиск JAR-файла в build/libs...
+          set "JAR_FILE="
+          for %%f in (build\libs\app-order*.jar) do (
+            set "JAR_FILE=%%f"
+            goto :found_jar
+          )
 
-          Write-Host "🟢 Найден файл: $($jarFile.Name)"
+          :found_jar
+          if "%JAR_FILE%"=="" (
+            echo [ERROR] КРИТИЧЕСКАЯ ОШИБКА: JAR файл не найден в build\libs!
+            echo Доступные файлы в папке:
+            dir build\libs\*.jar /b
+            exit /b 1
+          )
+          echo [SUCCESS] Найден файл: %JAR_FILE%
 
-          # 2. Запуск приложения в фоне
-          # Перенаправляем вывод в лог-файл для отладки
-          \$process = Start-Process `
-            -FilePath "java" `
-            -ArgumentList "-jar", "`"$($jarFile.FullName)`"" `
-            -NoNewWindow `
-            -PassThru `
-            -RedirectStandardOutput "\$env:TEMP/sut-output.log"
+          REM 2. Запуск приложения в фоне
+          echo [INFO] Запуск приложения...
+          start /B java -jar "%JAR_FILE%" > "%TEMP%\sut-output.log" 2>&1
+          set "PID=!ERRORLEVEL!"
 
-          # 3. Ожидание сообщения о старте Spring Boot
-          Write-Host "⏳ Ожидание сообщения 'Started ... in X.X seconds'..."
-          \$maxWait = 120
-          \$count = 0
-          
-          while ($count -lt $maxWait) {
-            Start-Sleep -Seconds 1
-            if (Test-Path "\$env:TEMP/sut-output.log") {
-              $lastLine = Get-Content "$env:TEMP/sut-output.log" -Tail 1
-              if (\$lastLine -match "Started .* in \d+\.\d+ seconds") {
-                Write-Host "✅ Приложение сообщило о готовности: \$lastLine"
-                break
-              }
-            }
-            \$count++
-          }
+          REM Небольшая пауза, чтобы файл лога точно создался
+          timeout /t 5 /nobreak >nul
 
-          if ($count -ge $maxWait) {
-            Write-Error "🛑 Таймаут: приложение не запустилось за 2 минуты."
-            Get-Content "$env:TEMP/sut-output.log" -Tail 50 | ForEach-Object { Write-Host $_ }
-            Stop-Process -Id \$process.Id -Force -ErrorAction SilentlyContinue
-            exit 1
-          }
+          REM 3. Ожидание строки "Started ... in X.X seconds"
+          echo [INFO] Ожидание сообщения о старте Spring Boot...
+          set "MAX_WAIT=120"
+          set "COUNT=0"
 
-          # 4. Проверка доступности порта 9999
-          Write-Host "⏳ Проверка доступности порта 9999..."
-          \$maxAttempts = 60
-          \$attempt = 0
-          
-          while ($attempt -lt $maxAttempts) {
-            try {
-              \$client = New-Object System.Net.Sockets.TcpClient("localhost", 9999)
-              \$client.Close()
-              Write-Host "🟢 Порт 9999 открыт! SUT готов к работе."
-              break
-            } catch {
-              Write-Host "⏳ Порт 9999 еще не открыт... ($($attempt + 1)/\$maxAttempts)"
-            }
-            \$attempt++
-            Start-Sleep -Seconds 2
-          }
+          :wait_started
+          if !COUNT! GEQ !MAX_WAIT! (
+            echo [ERROR] Таймаут: приложение не запустилось за 2 минуты.
+            type "%TEMP%\sut-output.log" | findstr /R /C:"Started .* in [0-9]\.[0-9]* seconds" || (
+              echo Последние 50 строк лога:
+              more +50 "%TEMP%\sut-output.log"
+            )
+            taskkill /F /PID !PID! 2>nul
+            exit /b 1
+          )
 
-          if ($attempt -ge $maxAttempts) {
-            Write-Error "🛑 Таймаут: порт 9999 не открылся."
-            Get-Content "$env:TEMP/sut-output.log" -Tail 50 | ForEach-Object { Write-Host $_ }
-            Stop-Process -Id \$process.Id -Force -ErrorAction SilentlyContinue
-            exit 1
-          }
+          timeout /t 1 /nobreak >nul
+          set /a COUNT+=1
 
-          # 5. Финальная пауза для полной инициализации
-          Write-Host "⏳ Финальная пауза 10 секунд для полной инициализации..."
-          Start-Sleep -Seconds 10
-          Write-Host "✅ SUT полностью готов к запуску тестов!"
+          findstr /R /C:"Started .* in [0-9]\.[0-9]* seconds" "%TEMP%\sut-output.log" >nul
+          if not errorlevel 1 (
+            echo [SUCCESS] Приложение сообщило о готовности.
+            goto :check_port
+          )
+          goto :wait_started
+
+          REM 4. Проверка порта 9999
+          :check_port
+          echo [INFO] Проверка доступности порта 9999...
+          set "MAX_ATTEMPTS=60"
+          set "ATTEMPT=0"
+
+          :wait_port
+          if !ATTEMPT! GEQ !MAX_ATTEMPTS! (
+            echo [ERROR] Таймаут: порт 9999 не открылся.
+            taskkill /F /PID !PID! 2>nul
+            exit /b 1
+          )
+
+          powershell -Command "try { $c = New-Object System.Net.Sockets.TcpClient('localhost', 9999); $c.Close(); exit 0 } catch { exit 1 }"
+          if not errorlevel 1 (
+            echo [SUCCESS] Порт 9999 открыт! SUT готов к работе.
+            goto :final_pause
+          )
+
+          set /a ATTEMPT+=1
+          echo [WAIT] Порт 9999 еще не открыт... (!ATTEMPT!/!MAX_ATTEMPTS!)
+          timeout /t 2 /nobreak >nul
+          goto :wait_port
+
+          REM 5. Финальная пауза
+          :final_pause
+          echo [INFO] Финальная пауза 10 секунд для полной инициализации...
+          timeout /t 10 /nobreak >nul
+          echo [SUCCESS] SUT полностью готов к запуску тестов!
 
       - name: Run tests 🎯
         run: .\gradlew.bat test --no-daemon
@@ -119,3 +127,4 @@ jobs:
         with:
           name: test-reports
           path: build/reports/tests/test/
+
