@@ -24,42 +24,44 @@ jobs:
         with:
           chrome-version: stable
 
-      # 1. ЗАПУСК ПРИЛОЖЕНИЯ (SUT)
+      # 1. ЗАПУСК ПРИЛОЖЕНИЯ (SUT) — cmd + start /B для фонового режима
       - name: Start SUT (Application)
+        shell: cmd
         run: |
-          Start-Process -NoNewWindow -PassThru -FilePath "java" -ArgumentList "-jar", "./artifacts/app-order.jar"
-          Write-Host "SUT started. Waiting for port 9999..."
-        shell: powershell
+          start /B java -jar artifacts/app-order.jar
+          echo SUT started in background...
 
-      # 2. ОЖИДАНИЕ ГОТОВНОСТИ ПРИЛОЖЕНИЯ (ИСПРАВЛЕНО)
+      # 2. ОЖИДАНИЕ ГОТОВНОСТИ ПРИЛОЖЕНИЯ — чистый cmd, без PowerShell
       - name: Wait for SUT to be ready
+        shell: cmd
         run: |
-          \$maxRetries = 60
-          \$retryCount = 0
-          while ($retryCount -lt $maxRetries) {
-            try {
-              \$tcp = New-Object System.Net.Sockets.TcpClient
-              # Правильный вызов метода в PowerShell: через запятую без скобок вокруг списка аргументов
-              \$tcp.Connect('127.0.0.1', 9999)
-              \$tcp.Close()
-              Write-Host "Port 9999 is open! SUT is ready."
-              break
-            } catch {
-              Write-Host "Waiting for SUT... ($retryCount/$maxRetries)"
-              Start-Sleep -Seconds 1
-              \$retryCount++
-            }
-          }
-          if ($retryCount -eq $maxRetries) {
-            Write-Error "SUT failed to start within timeout!"
-            exit 1
-          }
-        shell: powershell
+          set MAX_RETRIES=60
+          set RETRY_COUNT=0
+          
+          :loop
+          if %RETRY_COUNT% GEQ %MAX_RETRIES% (
+            echo SUT failed to start within timeout!
+            exit /b 1
+          )
+          
+          echo Checking port 9999... (attempt %RETRY_COUNT%/%MAX_RETRIES%)
+          
+          REM Ищем строку с LISTENING на порту 9999
+          netstat -an | findstr ":9999" | findstr "LISTENING" >nul
+          
+          if %errorlevel% EQU 0 (
+            echo Port 9999 is open! SUT is ready.
+            exit /b 0
+          )
+          
+          set /a RETRY_COUNT+=1
+          timeout /t 1 /nobreak >nul
+          goto loop
 
       # 3. ЗАПУСК ТЕСТОВ
       - name: Run tests
         env:
-          WEBDRIVER_CHROME_DRIVER: \${{ env.CHROME_DRIVER_PATH }}
+          WEBDRIVER_CHROME_DRIVER: %CHROME_DRIVER_PATH%
         run: .\gradlew.bat test --no-daemon
         shell: cmd
 
