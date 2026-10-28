@@ -11,7 +11,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # ЭТАП 1. Подготовка окружения
+      # ЭТАП 0: Подготовка окружения (код + JDK)
       - name: Checkout code 📁
         uses: actions/checkout@v4
 
@@ -20,54 +20,61 @@ jobs:
         with:
           java-version: '11'
           distribution: 'temurin'
-          cache: 'gradle' # Используем кэш gradle для ускорения сборки
+          cache: gradle # Кэшируем зависимости Gradle
 
+      # ЭТАП 1: Установка браузера Chrome
       - name: Install Chrome & Driver 🦊
         uses: browser-actions/setup-chrome@v1
         with:
           chrome-version: stable
 
-      # ЭТАП 2. Сборка проекта (чтобы получить JAR)
+      # ЭТАП 2: Сборка проекта (получение JAR-файла)
       - name: Build SUT (Application) 📦
         run: .\gradlew.bat build -x test --no-daemon
         shell: cmd
 
-      # ЭТАП 3. Запуск SUT с длительным ожиданием готовности
+      # ЭТАП 3: Запуск приложения с ожиданием готовности 🚀
+      # ✅ ПОИСК JAR ИЗМЕНЁН — теперь ищем в artifacts/
       - name: Start SUT and wait for readiness 🚀
         shell: pwsh
         run: |
-          # Автоматически находим JAR по маске (чтобы не зависеть от версии)
-          $jarFiles = Get-ChildItem -Path "./build/libs" -Filter "rabota*.jar"
-          
-          if ($null -eq $jarFiles) {
-            Write-Error "JAR файл не найден!"
-            exit 1
+          # Ждём появления артефакта после сборки
+          $maxWait = 60
+          while ($true) {
+            if (Test-Path "./artifacts/app-order.jar") { break }
+            Write-Host "⏳ Ожидаем создания JAR... попытка $($maxWait)"
+            Start-Sleep -Seconds 1
+            $maxWait--
+            if ($maxWait -eq 0) {
+              exit 1
+            }
           }
 
-          # Берём первый найденный JAR-файл
-          $jarPath = $jarFiles[0].FullName
-          Write-Host "Запускаем приложение из файла: $jarPath"
+          # Запускаем приложение из папки artifacts
+          $jarPath = "./artifacts/app-order.jar"
+          Write-Host "🟢 Запускаем приложение из \$jarPath"
 
           # Запускаем процесс в фоне
           $process = Start-Process `
               -FilePath "java" `
-              -ArgumentList "-jar", "$jarPath" `
+              -ArgumentList "-jar", "`"\$jarPath`"" `
               -NoNewWindow `
               -PassThru `
               -RedirectStandardOutput "$env:TMP/sut-output.log"
 
-          # Ждём сообщение Spring Boot о готовности
+          # Ждём сообщение Spring Boot о старте
+          $maxWaitSpring = 90
           while ($true) {
             Start-Sleep -Milliseconds 500
             $output = Get-Content "$env:TMP/sut-output.log" | Select-Object -Last 1
-            if ($output -match 'Responding at') { # Сообщение из Spring Boot
+            if ($output -match 'Started .* in \d+\.\d+ seconds') {
                 Write-Host "🟢 Приложение сообщило о готовности."
                 break;
             }
           }
 
-          # Проверка порта TCP с увеличенным таймаутом (~4 минуты)
-          $maxAttempts = 120
+          # Проверка порта TCP
+          $maxAttempts = 60
           $attempt = 0
           while ($attempt -lt $maxAttempts) {
             try {
@@ -77,31 +84,32 @@ jobs:
               Write-Host "🟢 Порт 9999 открыт!"
               break
             } catch {
-              Write-Host "⏳ Ожидаем открытия порта... попытка $($attempt + 1)"
+              Write-Host "⏳ Ожидаем открытия порта... попытка $($attempt + 1)/$maxAttempts"
             }
             $attempt++
             Start-Sleep -Seconds 2
           }
 
           if ($attempt -ge $maxAttempts) {
-            Write-Error "🛑 Не удалось запустить SUT. Порт 9999 так и не открылся."
+            Write-Error "🛑 Не удалось запустить SUT. Порт 9999 не открылся."
             Stop-Process -Id $process.Id -Force
             exit 1
           }
 
-          # Финальная длительная пауза для полной инициализации контекста Spring
-          Write-Host "⏳ Дополнительное ожидание на 20 секунд..."
-          Start-Sleep -Seconds 20
+          # Пауза перед тестами для полной инициализации контекста
+          Write-Host "⏳ Дополнительная пауза на 15 секунд..."
+          Start-Sleep -Seconds 15
 
-      # ЭТАП 4. Запуск тестов
+      # ЭТАП 4: Запуск тестов 🎯
+      # ✅ ВАЖНО! Мы НЕ ПЕРЕДАЕМ переменную WEBDRIVER_CHROME_DRIVER вручную!
+      # Действие setup-chrome уже поставило её автоматически.
       - name: Run tests 🎯
-        env:
-          WEBDRIVER_CHROME_DRIVER: ${{ env.CHROME_DRIVER_PATH }}
         run: .\gradlew.bat test --no-daemon
         shell: cmd
 
+      # ЭТАП 5: Загрузка отчёта
       - name: Upload Test Report 🗃️
-        if: always()
+        if: always() # Скачается даже при падении тестов
         uses: actions/upload-artifact@v4
         with:
           name: test-reports
