@@ -15,27 +15,39 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up JDK 11 ☕️
-        uses: actions/setup-java@v4
+        # Обновляем до v5, так как v4 deprecated
+        uses: actions/setup-java@v5
         with:
           java-version: '11'
           distribution: 'temurin'
+          cache: 'gradle'
 
       - name: Install Chrome & Driver 🦊
         uses: browser-actions/setup-chrome@v1
         with:
           chrome-version: stable
 
-      # Запускаем приложение в фоне и ждём сообщений от него
+      # ВАЖНО: Сначала собираем приложение, чтобы получить JAR-файл
+      - name: Build SUT (Application) 📦
+        run: .\gradlew.bat build -x test
+        shell: cmd
+
+      # Запускаем приложение в фоне и ждём готовности
       - name: Start SUT and wait for readiness 🚀
         shell: pwsh
         run: |
-          \$jarPath = "./artifacts/app-order.jar"
+          # Путь к JAR теперь из папки build/libs (стандартная для Gradle)
+          \$jarPath = "./build/libs/app-order.jar"
+          
           if (!(Test-Path \$jarPath)) {
-            Write-Error "Jar file not found at \$jarPath"
+            Write-Error "Jar file not found at \$jarPath. Check build step."
+            Get-ChildItem -Path "./build/libs/" -Filter "*.jar"
             exit 1
           }
 
-          # Запускаем процесс с захватом stdout для мониторинга
+          Write-Host "Starting SUT from: \$jarPath"
+          
+          # Запускаем процесс
           \$process = Start-Process `
               -FilePath "java" `
               -ArgumentList "-jar", "\$jarPath" `
@@ -43,24 +55,25 @@ jobs:
               -PassThru `
               -RedirectStandardOutput "\$env:TMP/sut-output.log"
 
-          # Ждём до тех пор, пока сервер не сообщит о своей готовности
+          # Ждём сообщения "Responding at"
           while (\$true) {
             Start-Sleep -Milliseconds 500
-            $output = Get-Content "$env:TMP/sut-output.log" | Select-Object -Last 1
-            if (\$output -match 'Responding at') { # Сообщение из Spring Boot
+            $output = Get-Content "$env:TMP/sut-output.log" -Tail 1
+            if (\$output -match 'Responding at') {
                 Write-Host "✅ SUT reported readiness: \$output"
-                break;
+                break
             }
           }
 
-          # Теперь проверим порт TCP с увеличенным таймаутом
-          \$maxAttempts = 120  # Было 60 → теперь 120 (до 240 секунд)
+          # Проверка порта TCP (с исправленным синтаксисом вызова методов)
+          \$maxAttempts = 120
           \$attempt = 0
           while ($attempt -lt $maxAttempts) {
             try {
               \$tcp = New-Object System.Net.Sockets.TcpClient
+              # ИСПРАВЛЕНИЕ: В PowerShell методы без аргументов вызываются БЕЗ скобок
               \$tcp.Connect("localhost", 9999)
-              \$tcp.Close()
+              \$tcp.Close() 
               Write-Host "🟢 Port 9999 is open!"
               break
             } catch {
@@ -72,20 +85,17 @@ jobs:
 
           if ($attempt -ge $maxAttempts) {
             Write-Error "🛑 Failed to start SUT. Port 9999 never opened."
-            
-            # Выводим последние 50 строк логов SUT для диагностики
             Write-Host "--- Last 50 lines of SUT logs ---"
             Get-Content "$env:TMP/sut-output.log" | Select-Object -Last 50 | ForEach-Object { Write-Host $_ }
-            
             Stop-Process -Id \$process.Id -Force
             exit 1
           }
 
-          # Увеличили паузу для полной инициализации контекста Spring
+          # Увеличенная пауза для полной инициализации контекста Spring
           Write-Host "⏳ Waiting 15 seconds for full Spring context initialization..."
           Start-Sleep -Seconds 15
 
-      # Передаём путь к драйверу в переменную окружения
+      # Запуск тестов
       - name: Run tests 🎯
         env:
           WEBDRIVER_CHROME_DRIVER: \${{ env.CHROME_DRIVER_PATH }}
