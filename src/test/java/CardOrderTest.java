@@ -33,15 +33,18 @@ public class CardOrderTest {
         }
 
         ChromeOptions options = new ChromeOptions();
-        options.addArguments("--headless=new");
-        options.addArguments("--no-sandbox");
-        options.addArguments("--disable-dev-shm-usage");
-        options.addArguments("--window-size=1920,1080");
-        options.addArguments("--disable-blink-features=AutomationControlled");
+
+        // --- Headless-режим и флаги для серверов сборки (CI) ---
+        options.addArguments("--headless");                 // ✅ Требуемый флаг из задания
+        options.addArguments("--no-sandbox");               // ✅ Обязательно для CI/контейнеров
+        options.addArguments("--disable-dev-shm-usage");  // ✅ Обход лимитов памяти в CI
+        options.addArguments("--window-size=1920,1080");  // ✅ Размер окна (иначе рендер может быть мобильным)
+        options.addArguments("--disable-blink-features=AutomationControlled"); // ✅ Маскирует автоматизацию
+        // -------------------------------------------------------
 
         driver = new ChromeDriver(options);
         wait = new WebDriverWait(driver, Duration.ofSeconds(60));
-        System.out.println("[SETUP] Chrome started successfully.");
+        System.out.println("[SETUP] Chrome started successfully in headless mode.");
     }
 
     @AfterAll
