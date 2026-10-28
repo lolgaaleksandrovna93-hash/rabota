@@ -11,11 +11,9 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # ЭТАП 1: Checkout кода
       - name: Checkout code 📁
         uses: actions/checkout@v4
 
-      # ЭТАП 2: Установка JDK 11
       - name: Set up JDK 11 ☕️
         uses: actions/setup-java@v5
         with:
@@ -23,96 +21,91 @@ jobs:
           distribution: 'temurin'
           cache: 'gradle'
 
-      # ЭТАП 3: Установка Chrome и драйвера (для Selenium)
       - name: Install Chrome & Driver 🦊
         uses: browser-actions/setup-chrome@v1
         with:
           chrome-version: stable
 
-      # ЭТАП 4: Сборка проекта (без запуска тестов)
       - name: Build SUT (Application) 📦
         run: .\gradlew.bat build -x test --no-daemon
         shell: cmd
 
-      # ЭТАП 5: Запуск SUT и ожидание готовности
       - name: Start SUT and wait for readiness 🚀
         shell: pwsh
         run: |
-          # 1. Находим JAR в build/libs (поддерживает имена вида app-order-1.0.0.jar)
-          $jarFile = Get-ChildItem -Path "./build/libs/" -Filter "app-order*.jar" | Select-Object -First 1
+          # 1. Ищем app-order.jar в build/libs
+          \$jarFile = Get-ChildItem -Path "./build/libs/" -Filter "app-order.jar" | Select-Object -First 1
 
           if ($null -eq $jarFile) {
-            Write-Error "❌ JAR файл не найден в build/libs!"
-            Write-Host "Доступные JAR в build/libs:"
+            Write-Error "❌ JAR файл 'app-order.jar' не найден в build/libs!"
+            Write-Host "Доступные файлы в build/libs:"
             Get-ChildItem -Path "./build/libs/" -Filter "*.jar" | ForEach-Object { Write-Host "  - $($_.Name)" }
             exit 1
           }
 
           $jarPath = $jarFile.FullName
-          Write-Host "🟢 Запускаем приложение: $jarPath"
+          Write-Host "🟢 Найден JAR: \$jarPath"
 
-          # 2. Запускаем процесс в фоне с перенаправлением логов
-          $process = Start-Process `
+          # 2. Запускаем приложение в фоне
+          \$process = Start-Process `
               -FilePath "java" `
-              -ArgumentList "-jar", "$jarPath" `
+              -ArgumentList "-jar", "\$jarPath" `
               -NoNewWindow `
               -PassThru `
-              -RedirectStandardOutput "$env:TEMP/sut-output.log"
+              -RedirectStandardOutput "\$env:TEMP/sut-output.log"
 
-          # 3. Ждем сообщение о старте Spring Boot
-          $maxWaitSpring = 120
-          $attempt = 0
+          # 3. Ждём строку Started ... in X.X seconds
+          \$maxWaitSpring = 120
+          \$attempt = 0
           while ($attempt -lt $maxWaitSpring) {
             Start-Sleep -Milliseconds 500
             $output = Get-Content "$env:TEMP/sut-output.log" -Tail 1
-            if ($output -match 'Started .* in \d+\.\d+ seconds') {
-                Write-Host "✅ Приложение сообщило о готовности: $output"
+            if (\$output -match 'Started .* in \d+\.\d+ seconds') {
+                Write-Host "✅ Приложение сообщило о готовности: \$output"
                 break
             }
-            $attempt++
+            \$attempt++
           }
 
           if ($attempt -ge $maxWaitSpring) {
             Write-Error "🛑 Таймаут ожидания сообщения 'Started...'."
             Get-Content "$env:TEMP/sut-output.log" | Select-Object -Last 30 | ForEach-Object { Write-Host $_ }
-            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            Stop-Process -Id \$process.Id -Force -ErrorAction SilentlyContinue
             exit 1
           }
 
-          # 4. Проверка порта 9999 (TCP)
-          $maxAttempts = 60
-          $attempt = 0
+          # 4. Проверяем, что порт 9999 открыт
+          \$maxAttempts = 60
+          \$attempt = 0
           while ($attempt -lt $maxAttempts) {
             try {
-              $tcp = New-Object System.Net.Sockets.TcpClient
-              $tcp.Connect("localhost", 9999)
-              $tcp.Close
+              \$tcp = New-Object System.Net.Sockets.TcpClient
+              \$tcp.Connect("localhost", 9999)
+              \$tcp.Close
               Write-Host "🟢 Порт 9999 открыт!"
               break
             } catch {
-              Write-Host "⏳ Порт 9999 еще не открыт... ($($attempt + 1)/$maxAttempts)"
+              Write-Host "⏳ Порт 9999 еще не открыт... ($($attempt + 1)/\$maxAttempts)"
             }
-            $attempt++
+            \$attempt++
             Start-Sleep -Seconds 2
           }
 
           if ($attempt -ge $maxAttempts) {
             Write-Error "🛑 Таймаут проверки порта 9999."
             Get-Content "$env:TEMP/sut-output.log" | Select-Object -Last 30 | ForEach-Object { Write-Host $_ }
-            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            Stop-Process -Id \$process.Id -Force -ErrorAction SilentlyContinue
             exit 1
           }
 
-          # 5. Финальная пауза для полной инициализации контекста
+          # 5. Финальная пауза для полной инициализации
           Write-Host "⏳ Финальная пауза 10 секунд для полной инициализации..."
           Start-Sleep -Seconds 10
 
-      # ЭТАП 6: Запуск автотестов (Selenium)
       - name: Run tests 🎯
         run: .\gradlew.bat test --no-daemon
         shell: cmd
 
-      # ЭТАП 7: Загрузка отчета о тестах
       - name: Upload Test Report 🗃️
         if: always()
         uses: actions/upload-artifact@v4
