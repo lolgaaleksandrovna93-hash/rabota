@@ -11,7 +11,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # ЭТАП 1: Подготовка окружения (код, JDK, браузер, драйверы)
+      # ЭТАП 1. Подготовка окружения
       - name: Checkout code 📁
         uses: actions/checkout@v4
 
@@ -20,83 +20,83 @@ jobs:
         with:
           java-version: '11'
           distribution: 'temurin'
-          cache: 'gradle'
+          cache: 'gradle' # Используем кэш gradle для ускорения сборки
 
       - name: Install Chrome & Driver 🦊
         uses: browser-actions/setup-chrome@v1
         with:
           chrome-version: stable
 
-      # ЭТАП 2: Сборка приложения (чтобы получить JAR для запуска SUT)
+      # ЭТАП 2. Сборка проекта (чтобы получить JAR)
       - name: Build SUT (Application) 📦
-        run: .\gradlew.bat build -x test
+        run: .\gradlew.bat build -x test --no-daemon
         shell: cmd
 
-      # ЭТАП 3: Запуск SUT и длительное ожидание его полной готовности
+      # ЭТАП 3. Запуск SUT с длительным ожиданием готовности
       - name: Start SUT and wait for readiness 🚀
         shell: pwsh
         run: |
-          # Автоматически находим JAR по маске (чтобы не зависеть от версии в имени)
-          \$jarFile = Get-ChildItem -Path "./build/libs/" -Filter "app-order*.jar" | Select-Object -First 1
-          if (\$null -eq \$jarFile) {
-            Write-Error "JAR file not found in build/libs/"
-            Get-ChildItem -Path "./build/libs/" -Filter "*.jar"
+          # Автоматически находим JAR по маске (чтобы не зависеть от версии)
+          $jarFiles = Get-ChildItem -Path "./build/libs" -Filter "rabota*.jar"
+          
+          if ($null -eq $jarFiles) {
+            Write-Error "JAR файл не найден!"
             exit 1
           }
-          \$jarPath = \$jarFile.FullName
-          Write-Host "Starting SUT from: \$jarPath"
 
-          # Запускаем приложение в фоне
-          \$process = Start-Process `
+          # Берём первый найденный JAR-файл
+          $jarPath = $jarFiles[0].FullName
+          Write-Host "Запускаем приложение из файла: $jarPath"
+
+          # Запускаем процесс в фоне
+          $process = Start-Process `
               -FilePath "java" `
-              -ArgumentList "-jar", "\$jarPath" `
+              -ArgumentList "-jar", "$jarPath" `
               -NoNewWindow `
               -PassThru `
-              -RedirectStandardOutput "\$env:TMP/sut-output.log"
+              -RedirectStandardOutput "$env:TMP/sut-output.log"
 
           # Ждём сообщение Spring Boot о готовности
-          while (\$true) {
+          while ($true) {
             Start-Sleep -Milliseconds 500
-            \$output = Get-Content "\$env:TMP/sut-output.log" -Tail 1
-            if (\$output -match 'Responding at') {
-                Write-Host "✅ SUT reported readiness: \$output"
-                break
+            $output = Get-Content "$env:TMP/sut-output.log" | Select-Object -Last 1
+            if ($output -match 'Responding at') { # Сообщение из Spring Boot
+                Write-Host "🟢 Приложение сообщило о готовности."
+                break;
             }
           }
 
-          # Проверка порта TCP с увеличенным таймаутом (до ~4 минут)
-          \$maxAttempts = 120
-          \$attempt = 0
-          while (\$attempt -lt \$maxAttempts) {
+          # Проверка порта TCP с увеличенным таймаутом (~4 минуты)
+          $maxAttempts = 120
+          $attempt = 0
+          while ($attempt -lt $maxAttempts) {
             try {
-              \$tcp = New-Object System.Net.Sockets.TcpClient
-              \$tcp.Connect("localhost", 9999)
-              \$tcp.Close
-              Write-Host "🟢 Port 9999 is open!"
+              $tcp = New-Object System.Net.Sockets.TcpClient
+              $tcp.Connect("localhost", 9999)
+              $tcp.Close()
+              Write-Host "🟢 Порт 9999 открыт!"
               break
             } catch {
-              Write-Host "⏳ Waiting for port... attempt \$(\$attempt + 1) of \$maxAttempts"
+              Write-Host "⏳ Ожидаем открытия порта... попытка $($attempt + 1)"
             }
-            \$attempt++
+            $attempt++
             Start-Sleep -Seconds 2
           }
 
-          if (\$attempt -ge \$maxAttempts) {
-            Write-Error "🛑 Failed to start SUT. Port 9999 never opened."
-            Write-Host "--- Last 50 lines of SUT logs ---"
-            Get-Content "\$env:TMP/sut-output.log" | Select-Object -Last 50 | ForEach-Object { Write-Host \$_ }
-            Stop-Process -Id \$process.Id -Force
+          if ($attempt -ge $maxAttempts) {
+            Write-Error "🛑 Не удалось запустить SUT. Порт 9999 так и не открылся."
+            Stop-Process -Id $process.Id -Force
             exit 1
           }
 
           # Финальная длительная пауза для полной инициализации контекста Spring
-          Write-Host "⏳ Waiting 20 seconds for full Spring context initialization..."
+          Write-Host "⏳ Дополнительное ожидание на 20 секунд..."
           Start-Sleep -Seconds 20
 
-      # ЭТАП 4: Запуск тестов (только после полной готовности среды)
+      # ЭТАП 4. Запуск тестов
       - name: Run tests 🎯
         env:
-          WEBDRIVER_CHROME_DRIVER: \${{ env.CHROME_DRIVER_PATH }}
+          WEBDRIVER_CHROME_DRIVER: ${{ env.CHROME_DRIVER_PATH }}
         run: .\gradlew.bat test --no-daemon
         shell: cmd
 
