@@ -1,10 +1,10 @@
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.support.ui.ExpectedConditions;
@@ -12,17 +12,16 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 
 import java.time.Duration;
 
-public class CardOrderValidationTest {
+public class CardOrderTest {
 
     private static WebDriver driver;
     private static WebDriverWait wait;
-    private static String appUrl; // <-- Добавляем поле для URL
+    private static String appUrl;
 
     @BeforeAll
-    static void setupAll() {
+    static void setup() {
         // Читаем APP_URL из переменных окружения. Если нет — дефолт localhost:9999
         appUrl = System.getenv("APP_URL") != null ? System.getenv("APP_URL") : "http://localhost:9999";
-        System.out.println("=== CardOrderValidationTest: запуск драйвера ===");
         System.out.println("[SETUP] Target URL: " + appUrl);
 
         String driverPath = System.getenv("WEBDRIVER_CHROME_DRIVER");
@@ -46,76 +45,60 @@ public class CardOrderValidationTest {
     }
 
     @AfterAll
-    static void teardownAll() {
+    static void teardown() {
         if (driver != null) {
-            System.out.println("=== CardOrderValidationTest: закрытие драйвера ===");
             driver.quit();
+            System.out.println("[TEARDOWN] Browser closed.");
         }
     }
 
     @Test
-    void shouldShowValidationErrorWhenNameIsInvalid() {
-        System.out.println("1. Открываем страницу: " + appUrl);
-        driver.get(appUrl); // <-- Используем appUrl вместо хардкода
+    void shouldSubmitCardOrderFormSuccessfully() {
+        System.out.println("[TEST] Opening page: " + appUrl);
+        driver.get(appUrl);
 
         System.out.println("[TEST] Current URL: " + driver.getCurrentUrl());
         System.out.println("[TEST] Page title: " + driver.getTitle());
 
-        WebElement nameFieldWrapper = wait.until(ExpectedConditions.visibilityOfElementLocated(
-                By.cssSelector("[data-test-id='name']")));
-
-        WebElement nameInput = nameFieldWrapper.findElement(By.tagName("input"));
-
-        System.out.println("3. Вводим НЕКОРРЕКТНЫЕ данные...");
+        var nameInput = wait.until(
+                ExpectedConditions.visibilityOfElementLocated(By.cssSelector("[data-test-id=\"name\"] input")));
+        System.out.println("[TEST] Name input found.");
         nameInput.clear();
-        nameInput.sendKeys("Ivanov Ivan");
+        nameInput.sendKeys("Иванов Иван Иванович");
 
-        WebElement agreementLabel = wait.until(ExpectedConditions.elementToBeClickable(
-                By.cssSelector("label[data-test-id='agreement']")));
+        var phoneInput = wait.until(
+                ExpectedConditions.visibilityOfElementLocated(By.cssSelector("[data-test-id=\"phone\"] input")));
+        System.out.println("[TEST] Phone input found.");
+        phoneInput.clear();
 
+        String phoneNumber = "+79001234567";
+        phoneInput.sendKeys(phoneNumber);
+
+        var agreementLabel = wait.until(
+                ExpectedConditions.elementToBeClickable(By.cssSelector("label[data-test-id=\"agreement\"]")));
+        System.out.println("[TEST] Agreement label found and clickable.");
         agreementLabel.click();
-        wait.until(ExpectedConditions.attributeContains(agreementLabel, "class", "checkbox_checked"));
 
-        WebElement submitButton = wait.until(ExpectedConditions.elementToBeClickable(
-                By.xpath("//button[.//span[contains(text(), 'Продолжить')]]")));
+        wait.until(ExpectedConditions.attributeContains(agreementLabel, "class", "checkbox_checked"));
+        System.out.println("[TEST] Agreement checkbox marked.");
+
+        var submitButton = wait.until(
+                ExpectedConditions.elementToBeClickable(By.xpath("//button[.//span[contains(text(), 'Продолжить')]]")));
+        System.out.println("[TEST] Submit button found and clickable.");
 
         if ("true".equals(submitButton.getAttribute("disabled"))) {
-            throw new RuntimeException("Кнопка 'Продолжить' заблокирована до клика.");
+            throw new RuntimeException("Кнопка 'Продолжить' заблокирована!");
         }
 
         submitButton.click();
+        System.out.println("[TEST] Clicked submit button.");
 
-        System.out.println("7. Ждем появления ошибки валидации...");
+        WebDriverWait longWait = new WebDriverWait(driver, Duration.ofSeconds(90));
+        var successBlock = longWait.until(
+                ExpectedConditions.visibilityOfElementLocated(By.cssSelector("[data-test-id=\"order-success\"]")));
 
-        boolean errorFound = false;
-
-        try {
-            WebElement errorTextElement = wait.until(ExpectedConditions.visibilityOfElementLocated(
-                    By.cssSelector("[data-test-id='name'] .input_sub")));
-
-            String errorText = errorTextElement.getText();
-            if (!errorText.isEmpty()) {
-                System.out.println("   -> Текст ошибки найден: '" + errorText + "'");
-                errorFound = true;
-            }
-        } catch (Exception e) {
-            System.out.println("   -> Блок с текстом ошибки не найден.");
-        }
-
-        if (!errorFound) {
-            try {
-                wait.until(ExpectedConditions.attributeContains(nameFieldWrapper, "class", "input_invalid"));
-                System.out.println("   -> Класс input_invalid обнаружен!");
-                errorFound = true;
-            } catch (Exception e) {
-                System.out.println("   -> Класс input_invalid не обнаружен.");
-            }
-        }
-
-        if (!errorFound) {
-            throw new RuntimeException("❌ НЕ УДАЛОСЬ НАЙТИ ОШИБКУ ВАЛИДАЦИИ!");
-        }
-
-        System.out.println("✅ ТЕСТ ПРОЙДЕН!");
+        assertTrue(successBlock.isDisplayed(), "Блок успеха не появился!");
+        System.out.println("[TEST] ✅ Test passed!");
     }
 }
+
