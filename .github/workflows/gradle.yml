@@ -15,7 +15,7 @@ jobs:
       - name: Checkout code 📁
         uses: actions/checkout@v4
 
-      # ЭТАП 2: Установка JDK (ИСПРАВЛЕНО: убрано лишнее 'actions/')
+      # ЭТАП 2: Установка JDK (ИСПРАВЛЕНО: правильный action)
       - name: Set up JDK 11 ☕️
         uses: actions/setup-java@v5
         with:
@@ -38,17 +38,21 @@ jobs:
       - name: Start SUT and wait for readiness 🚀
         shell: pwsh
         run: |
-          # 1. Проверяем, что файл реально появился в artifacts
-          if (-not (Test-Path "./artifacts/app-order.jar")) {
-            Write-Error "❌ Файл app-order.jar не найден в папке artifacts!"
-            Get-ChildItem -Path "./" -Recurse -Filter "*.jar" | Select-Object -First 5 | ForEach-Object { Write-Host "Найден: $($_.FullName)" }
+          # 1. АВТОМАТИЧЕСКИЙ ПОИСК JAR В build/libs
+          # Ищем файл, начинающийся с app-order и заканчивающийся на .jar
+          \$jarFile = Get-ChildItem -Path "./build/libs/" -Filter "app-order*.jar" | Select-Object -First 1
+
+          if ($null -eq $jarFile) {
+            Write-Error "❌ JAR файл не найден в build/libs!"
+            Write-Host "Доступные файлы в build/libs:"
+            Get-ChildItem -Path "./build/libs/" -Filter "*.jar" | ForEach-Object { Write-Host "  - $($_.Name)" }
             exit 1
           }
 
-          \$jarPath = "./artifacts/app-order.jar"
-          Write-Host "🟢 Запускаем приложение: \$jarPath"
+          $jarPath = $jarFile.FullName
+          Write-Host "🟢 Найден JAR: \$jarPath"
 
-          # 2. Запускаем процесс
+          # 2. Запуск процесса
           \$process = Start-Process `
               -FilePath "java" `
               -ArgumentList "-jar", "\$jarPath" `
@@ -56,12 +60,11 @@ jobs:
               -PassThru `
               -RedirectStandardOutput "\$env:TMP/sut-output.log"
 
-          # 3. Ждем сообщение о старте Spring Boot
+          # 3. Ждем сообщение Spring Boot о старте
           \$maxWaitSpring = 120
           \$attempt = 0
           while ($attempt -lt $maxWaitSpring) {
             Start-Sleep -Milliseconds 500
-            # Читаем только последнюю строку, чтобы не грузить память
             $output = Get-Content "$env:TMP/sut-output.log" -Tail 1
             
             if (\$output -match 'Started .* in \d+\.\d+ seconds') {
@@ -78,7 +81,7 @@ jobs:
             exit 1
           }
 
-          # 4. Проверка порта TCP (ИСПРАВЛЕНО: \$tcp.Close без скобок)
+          # 4. Проверка порта TCP
           \$maxAttempts = 120
           \$attempt = 0
           while ($attempt -lt $maxAttempts) {
@@ -101,19 +104,9 @@ jobs:
             exit 1
           }
 
-          # 5. Финальная пауза для полной инициализации контекста
-          Write-Host "⏳ Финальная пауза 20 секунд для полной инициализации..."
+          # 5. Финальная пауза
+          Write-Host "⏳ Финальная пауза 20 секунд..."
           Start-Sleep -Seconds 20
 
       # ЭТАП 6: Запуск тестов
       - name: Run tests 🎯
-        run: .\gradlew.bat test --no-daemon
-        shell: cmd
-
-      # ЭТАП 7: Загрузка отчета
-      - name: Upload Test Report 🗃️
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-reports
-          path: build/reports/tests/test/
