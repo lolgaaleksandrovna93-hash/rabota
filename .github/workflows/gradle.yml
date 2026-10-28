@@ -36,10 +36,10 @@ jobs:
           @echo off
           setlocal enabledelayedexpansion
 
-          REM 1. Поиск JAR файла
+          REM 1. Поиск JAR файла (любой .jar в build/libs)
           echo [INFO] Поиск JAR-файла в build/libs...
           set "JAR_FILE="
-          for %%f in (build\libs\app-order*.jar) do (
+          for %%f in (build\libs\*.jar) do (
             set "JAR_FILE=%%f"
             goto :found_jar
           )
@@ -47,8 +47,7 @@ jobs:
           :found_jar
           if "%JAR_FILE%"=="" (
             echo [ERROR] КРИТИЧЕСКАЯ ОШИБКА: JAR файл не найден в build\libs!
-            echo Доступные файлы в папке:
-            dir build\libs\*.jar /b
+            dir build\libs /b 2>nul
             exit /b 1
           )
           echo [SUCCESS] Найден файл: %JAR_FILE%
@@ -69,7 +68,7 @@ jobs:
           :wait_started
           if !COUNT! GEQ !MAX_WAIT! (
             echo [ERROR] Таймаут: приложение не запустилось за 2 минуты.
-            type "%TEMP%\sut-output.log" | findstr /R /C:"Started .* in [0-9]\.[0-9]* seconds" || (
+            if exist "%TEMP%\sut-output.log" (
               echo Последние 50 строк лога:
               more +50 "%TEMP%\sut-output.log"
             )
