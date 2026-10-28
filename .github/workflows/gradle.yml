@@ -1,4 +1,4 @@
-name: Java CI with Gradle (Selenium + Spring Boot)
+name: Java CI with Gradle (Selenium Only)
 
 on:
   push:
@@ -14,10 +14,10 @@ jobs:
       - name: Checkout code 📁
         uses: actions/checkout@v4
 
-      - name: Set up JDK 11 ☕️
+      - name: Set up JDK 17 ☕️
         uses: actions/setup-java@v5
         with:
-          java-version: '11'
+          java-version: '17'
           distribution: 'temurin'
           cache: 'gradle'
 
@@ -26,70 +26,15 @@ jobs:
         with:
           chrome-version: stable
 
-      - name: Build SUT (Application) 📦
-        # Собираем проект. Флаг -x test исключает запуск тестов на этом этапе.
-        # ВАЖНО: Для успеха здесь нужен плагин spring-boot в build.gradle!
+      - name: Build project 📦
+        # Просто компилируем проект и скачиваем зависимости
         run: .\gradlew.bat build -x test --no-daemon
         shell: cmd
 
-      - name: Start SUT and wait for readiness 🚀
-        shell: cmd
-        run: |
-          @echo off
-          setlocal enabledelayedexpansion
-
-          echo [INFO] Поиск JAR-файла в build/libs...
-          set "JAR_FILE="
-          for %%f in (build\libs\*.jar) do (
-            set "JAR_FILE=%%f"
-            goto :found_jar
-          )
-
-          :found_jar
-          if "%JAR_FILE%"=="" (
-            echo [ERROR] КРИТИЧЕСКАЯ ОШИБКА: JAR файл не найден!
-            dir build\libs /b 2>nul
-            exit /b 1
-          )
-          echo [SUCCESS] Найден файл: %JAR_FILE%
-
-          echo [INFO] Запуск приложения в фоне...
-          REM Запуск без перенаправления логов (это ломало процесс в Windows)
-          start /B java -jar "%JAR_FILE%"
-
-          REM Даем приложению 5 секунд на старт инициализации
-          timeout /t 5 /nobreak >nul
-
-          echo [INFO] Проверка доступности порта 9999...
-          set "MAX_ATTEMPTS=60"
-          set "ATTEMPT=0"
-
-          :wait_port
-          if !ATTEMPT! GEQ !MAX_ATTEMPTS! (
-            echo [ERROR] Таймаут: порт 9999 не открылся. Приложение не готово.
-            exit /b 1
-          )
-
-          REM Проверка порта через PowerShell
-          powershell -Command "try { $c = New-Object System.Net.Sockets.TcpClient('localhost', 9999); $c.Close(); exit 0 } catch { exit 1 }"
-          
-          if not errorlevel 1 (
-            echo [SUCCESS] Порт 9999 открыт! SUT готов к работе.
-            goto :final_pause
-          )
-
-          set /a ATTEMPT+=1
-          echo [WAIT] Ожидание порта (!ATTEMPT!/!MAX_ATTEMPTS!)...
-          timeout /t 2 /nobreak >nul
-          goto :wait_port
-
-          :final_pause
-          echo [INFO] Финальная пауза 10 секунд для полной инициализации контекста...
-          timeout /t 10 /nobreak >nul
-          echo [SUCCESS] SUT полностью готов к запуску тестов!
-
-      - name: Run tests 🎯
-        # Запускаем только тесты. Сборка уже была на шаге выше.
+      - name: Run Selenium Tests 🎯
+        # Запускаем тесты. 
+        # ВАЖНО: В тестах URL должен быть прописан жестко (например, http://demoqa.com) 
+        # или браться из переменной окружения, если это твой локальный сервер.
         run: .\gradlew.bat test --no-daemon
         shell: cmd
 
@@ -99,3 +44,4 @@ jobs:
         with:
           name: test-reports
           path: build/reports/tests/test/
+
