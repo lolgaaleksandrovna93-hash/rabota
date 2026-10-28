@@ -11,6 +11,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
+      # ЭТАП 1: Подготовка окружения (код, JDK, браузер, драйверы)
       - name: Checkout code 📁
         uses: actions/checkout@v4
 
@@ -26,27 +27,26 @@ jobs:
         with:
           chrome-version: stable
 
-      # ВАЖНО: собираем приложение, чтобы получить JAR
+      # ЭТАП 2: Сборка приложения (чтобы получить JAR для запуска SUT)
       - name: Build SUT (Application) 📦
         run: .\gradlew.bat build -x test
         shell: cmd
 
-      # Запускаем SUT и ждём его полной готовности
+      # ЭТАП 3: Запуск SUT и длительное ожидание его полной готовности
       - name: Start SUT and wait for readiness 🚀
         shell: pwsh
         run: |
-          # Путь к JAR: стандартный для Gradle
-          \$jarPath = "./build/libs/app-order.jar"
-          
-          if (!(Test-Path \$jarPath)) {
-            Write-Error "Jar file not found at \$jarPath"
-            Write-Host "Available JARs in build/libs:"
-            Get-ChildItem -Path "./build/libs/" -Filter "*.jar" | ForEach-Object { Write-Host \$_ }
+          # Автоматически находим JAR по маске (чтобы не зависеть от версии в имени)
+          \$jarFile = Get-ChildItem -Path "./build/libs/" -Filter "app-order*.jar" | Select-Object -First 1
+          if (\$null -eq \$jarFile) {
+            Write-Error "JAR file not found in build/libs/"
+            Get-ChildItem -Path "./build/libs/" -Filter "*.jar"
             exit 1
           }
-
+          \$jarPath = \$jarFile.FullName
           Write-Host "Starting SUT from: \$jarPath"
-          
+
+          # Запускаем приложение в фоне
           \$process = Start-Process `
               -FilePath "java" `
               -ArgumentList "-jar", "\$jarPath" `
@@ -64,7 +64,7 @@ jobs:
             }
           }
 
-          # Увеличенный таймаут проверки порта (до ~4 минут)
+          # Проверка порта TCP с увеличенным таймаутом (до ~4 минут)
           \$maxAttempts = 120
           \$attempt = 0
           while (\$attempt -lt \$maxAttempts) {
@@ -89,11 +89,11 @@ jobs:
             exit 1
           }
 
-          # Увеличенная пауза для полной инициализации контекста Spring
+          # Финальная длительная пауза для полной инициализации контекста Spring
           Write-Host "⏳ Waiting 20 seconds for full Spring context initialization..."
           Start-Sleep -Seconds 20
 
-      # Запуск тестов
+      # ЭТАП 4: Запуск тестов (только после полной готовности среды)
       - name: Run tests 🎯
         env:
           WEBDRIVER_CHROME_DRIVER: \${{ env.CHROME_DRIVER_PATH }}
