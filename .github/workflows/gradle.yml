@@ -29,59 +29,66 @@ jobs:
       - name: Start SUT and wait for readiness 🚀
         shell: pwsh
         run: |
-          $jarPath = "./artifacts/app-order.jar"
-          if (!(Test-Path $jarPath)) {
-            Write-Error "Jar file not found at $jarPath"
+          \$jarPath = "./artifacts/app-order.jar"
+          if (!(Test-Path \$jarPath)) {
+            Write-Error "Jar file not found at \$jarPath"
             exit 1
           }
 
           # Запускаем процесс с захватом stdout для мониторинга
-          $process = Start-Process `
+          \$process = Start-Process `
               -FilePath "java" `
-              -ArgumentList "-jar", "$jarPath" `
+              -ArgumentList "-jar", "\$jarPath" `
               -NoNewWindow `
               -PassThru `
-              -RedirectStandardOutput "$env:TMP/sut-output.log"
+              -RedirectStandardOutput "\$env:TMP/sut-output.log"
 
           # Ждём до тех пор, пока сервер не сообщит о своей готовности
-          while ($true) {
+          while (\$true) {
             Start-Sleep -Milliseconds 500
             $output = Get-Content "$env:TMP/sut-output.log" | Select-Object -Last 1
-            if ($output -match 'Responding at') { # Сообщение из Spring Boot
+            if (\$output -match 'Responding at') { # Сообщение из Spring Boot
+                Write-Host "✅ SUT reported readiness: \$output"
                 break;
             }
           }
 
-          # Теперь проверим порт TCP
-          $maxAttempts = 60
-          $attempt = 0
+          # Теперь проверим порт TCP с увеличенным таймаутом
+          \$maxAttempts = 120  # Было 60 → теперь 120 (до 240 секунд)
+          \$attempt = 0
           while ($attempt -lt $maxAttempts) {
             try {
-              $tcp = New-Object System.Net.Sockets.TcpClient
-              $tcp.Connect("localhost", 9999) # Правильный вызов метода
-              $tcp.Close()
+              \$tcp = New-Object System.Net.Sockets.TcpClient
+              \$tcp.Connect("localhost", 9999)
+              \$tcp.Close()
               Write-Host "🟢 Port 9999 is open!"
               break
             } catch {
-              Write-Host "⏳ Waiting for port... attempt $($attempt + 1)"
+              Write-Host "⏳ Waiting for port... attempt $($attempt + 1) of \$maxAttempts"
             }
-            $attempt++
+            \$attempt++
             Start-Sleep -Seconds 2
           }
 
           if ($attempt -ge $maxAttempts) {
             Write-Error "🛑 Failed to start SUT. Port 9999 never opened."
-            Stop-Process -Id $process.Id -Force
+            
+            # Выводим последние 50 строк логов SUT для диагностики
+            Write-Host "--- Last 50 lines of SUT logs ---"
+            Get-Content "$env:TMP/sut-output.log" | Select-Object -Last 50 | ForEach-Object { Write-Host $_ }
+            
+            Stop-Process -Id \$process.Id -Force
             exit 1
           }
 
-          # Пауза перед тестами для полной инициализации контекста
-          Start-Sleep -Seconds 5
+          # Увеличили паузу для полной инициализации контекста Spring
+          Write-Host "⏳ Waiting 15 seconds for full Spring context initialization..."
+          Start-Sleep -Seconds 15
 
       # Передаём путь к драйверу в переменную окружения
       - name: Run tests 🎯
         env:
-          WEBDRIVER_CHROME_DRIVER: ${{ env.CHROME_DRIVER_PATH }}
+          WEBDRIVER_CHROME_DRIVER: \${{ env.CHROME_DRIVER_PATH }}
         run: .\gradlew.bat test --no-daemon
         shell: cmd
 
@@ -89,5 +96,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
+          name: test-reports
+          path: build/reports/tests/test/
+
           name: test-reports
           path: build/reports/tests/test/
