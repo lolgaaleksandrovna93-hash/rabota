@@ -5,16 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
 import java.time.Duration;
-
-// УДАЛИТЕ ЭТУ ИМПОРТНУЮ СТРОКУ, ОНА ТЕПЕРЬ НЕ НУЖНА:
-// import static io.github.bonigarcia.wdm.WebDriverManager.chromedriver;
 
 public class CardOrderTest {
 
@@ -23,39 +19,32 @@ public class CardOrderTest {
 
     @BeforeAll
     static void setup() {
-        System.out.println("=== Запуск драйвера (без WebDriverManager) ===");
-        
+        String driverPath = System.getenv("WEBDRIVER_CHROME_DRIVER");
+        if (driverPath != null && !driverPath.isEmpty()) {
+            System.setProperty("webdriver.chrome.driver", driverPath);
+        }
+
         ChromeOptions options = new ChromeOptions();
-        
-        // Эти флаги ОБЯЗАТЕЛЬНЫ для GitHub Actions
         options.addArguments("--headless=new");
         options.addArguments("--no-sandbox");
         options.addArguments("--disable-dev-shm-usage");
         options.addArguments("--window-size=1920,1080");
 
-        // ВАЖНО: Мы больше не вызываем chromedriver().setup()!
-        // Selenium Manager (встроенный в selenium-java 4.6+) сам скачает и настроит драйвер.
         driver = new ChromeDriver(options);
-        
-        driver.manage().window().maximize();
         wait = new WebDriverWait(driver, Duration.ofSeconds(30));
     }
 
     @AfterAll
     static void teardown() {
         if (driver != null) {
-            System.out.println("=== Закрытие браузера ===");
             driver.quit();
         }
     }
 
     @Test
     void shouldSubmitCardOrderFormSuccessfully() {
-        // ... (весь остальной код теста остается БЕЗ ИЗМЕНЕНИЙ) ...
-        System.out.println("1. Открываем страницу...");
         driver.get("http://localhost:9999");
-        // ... остальной код ...
-        
+
         var nameInput = wait.until(
                 ExpectedConditions.visibilityOfElementLocated(By.cssSelector("[data-test-id=\"name\"] input")));
         nameInput.clear();
@@ -68,7 +57,6 @@ public class CardOrderTest {
         String phoneNumber = "+79001234567";
         for (char c : phoneNumber.toCharArray()) {
             phoneInput.sendKeys(String.valueOf(c));
-            try { Thread.sleep(100); } catch (InterruptedException e) {}
         }
 
         var agreementLabel = wait.until(
@@ -90,6 +78,6 @@ public class CardOrderTest {
                 ExpectedConditions.visibilityOfElementLocated(By.cssSelector("[data-test-id=\"order-success\"]")));
 
         assertTrue(successBlock.isDisplayed(), "Блок успеха не появился!");
-        System.out.println("✅ ТЕСТ ПРОЙДЕН!");
     }
 }
+
