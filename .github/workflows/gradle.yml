@@ -27,7 +27,8 @@ jobs:
           chrome-version: stable
 
       - name: Build SUT (Application) 📦
-        # Важно: эта команда должна создать ИСПОЛНЯЕМЫЙ JAR (см. инструкцию ниже)
+        # Собираем проект. Флаг -x test исключает запуск тестов на этом этапе.
+        # ВАЖНО: Для успеха здесь нужен плагин spring-boot в build.gradle!
         run: .\gradlew.bat build -x test --no-daemon
         shell: cmd
 
@@ -37,7 +38,6 @@ jobs:
           @echo off
           setlocal enabledelayedexpansion
 
-          REM 1. Поиск JAR файла
           echo [INFO] Поиск JAR-файла в build/libs...
           set "JAR_FILE="
           for %%f in (build\libs\*.jar) do (
@@ -47,37 +47,30 @@ jobs:
 
           :found_jar
           if "%JAR_FILE%"=="" (
-            echo [ERROR] КРИТИЧЕСКАЯ ОШИБКА: JAR файл не найден в build\libs!
+            echo [ERROR] КРИТИЧЕСКАЯ ОШИБКА: JAR файл не найден!
             dir build\libs /b 2>nul
             exit /b 1
           )
           echo [SUCCESS] Найден файл: %JAR_FILE%
 
-          REM 2. Запуск приложения
           echo [INFO] Запуск приложения в фоне...
-          
-          REM ВАЖНО: Убрали "> %TEMP%\sut-output.log 2>&1" из команды start.
-          REM В Windows start /B не поддерживает перенаправление потоков, это вызывало краш.
-          REM Логи Java теперь пишутся прямо в консоль шага GitHub Actions.
+          REM Запуск без перенаправления логов (это ломало процесс в Windows)
           start /B java -jar "%JAR_FILE%"
 
-          REM Небольшая пауза, чтобы приложение начало инициализацию
+          REM Даем приложению 5 секунд на старт инициализации
           timeout /t 5 /nobreak >nul
 
-          REM 3. Проверка порта 9999 (основной индикатор готовности Spring Boot)
           echo [INFO] Проверка доступности порта 9999...
           set "MAX_ATTEMPTS=60"
           set "ATTEMPT=0"
 
           :wait_port
           if !ATTEMPT! GEQ !MAX_ATTEMPTS! (
-            echo [ERROR] Таймаут: порт 9999 не открылся за 2 минуты.
-            echo Проверьте, что server.port=9999 в application.properties.
-            echo Проверьте логи выше — возможно, приложение упало из-за ошибки запуска (no main class).
+            echo [ERROR] Таймаут: порт 9999 не открылся. Приложение не готово.
             exit /b 1
           )
 
-          REM Проверка порта через PowerShell (это единственный надежный способ в Windows без установки curl/telnet)
+          REM Проверка порта через PowerShell
           powershell -Command "try { $c = New-Object System.Net.Sockets.TcpClient('localhost', 9999); $c.Close(); exit 0 } catch { exit 1 }"
           
           if not errorlevel 1 (
@@ -86,7 +79,7 @@ jobs:
           )
 
           set /a ATTEMPT+=1
-          echo [WAIT] Порт 9999 еще не открыт... (!ATTEMPT!/!MAX_ATTEMPTS!)
+          echo [WAIT] Ожидание порта (!ATTEMPT!/!MAX_ATTEMPTS!)...
           timeout /t 2 /nobreak >nul
           goto :wait_port
 
@@ -96,6 +89,7 @@ jobs:
           echo [SUCCESS] SUT полностью готов к запуску тестов!
 
       - name: Run tests 🎯
+        # Запускаем только тесты. Сборка уже была на шаге выше.
         run: .\gradlew.bat test --no-daemon
         shell: cmd
 
