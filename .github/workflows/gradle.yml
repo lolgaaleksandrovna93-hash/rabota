@@ -11,30 +11,30 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # ЭТАП 0: Подготовка окружения (код + JDK)
+      # ЭТАП 1. Подготовка окружения (код + JDK)
       - name: Checkout code 📁
         uses: actions/checkout@v4
 
       - name: Set up JDK 11 ☕️
-        uses: actions/setup-java@v5
+        uses: actions/actions/setup-java@v3 # Используем официальный action от GitHub
         with:
           java-version: '11'
           distribution: 'temurin'
           cache: gradle # Кэшируем зависимости Gradle
 
-      # ЭТАП 1: Установка браузера Chrome
+      # ЭТАП 2. Установка браузера Chrome
       - name: Install Chrome & Driver 🦊
         uses: browser-actions/setup-chrome@v1
         with:
           chrome-version: stable
 
-      # ЭТАП 2: Сборка проекта (получение JAR-файла)
+      # ЭТАП 3. Сборка проекта (получение JAR-файла из нестандартной папки artifacts/)
       - name: Build SUT (Application) 📦
         run: .\gradlew.bat build -x test --no-daemon
         shell: cmd
 
-      # ЭТАП 3: Запуск приложения с ожиданием готовности 🚀
-      # ✅ ПОИСК JAR ИЗМЕНЁН — теперь ищем в artifacts/
+      # ЭТАП 4. Запуск приложения с ожиданием готовности 🚀
+      # ✅ ИСПРАВЛЕННЫЙ СКРИПТ ДЛЯ НЕСТАНДАРТНОЙ ПАПКИ ARTIFACTS
       - name: Start SUT and wait for readiness 🚀
         shell: pwsh
         run: |
@@ -52,12 +52,12 @@ jobs:
 
           # Запускаем приложение из папки artifacts
           $jarPath = "./artifacts/app-order.jar"
-          Write-Host "🟢 Запускаем приложение из \$jarPath"
+          Write-Host "🟢 Запускаем приложение из $jarPath" # Для логов
 
-          # Запускаем процесс в фоне
+          # ❗️ ИСПРАВИЛ СИНТАКСИС! Теперь путь передаётся корректно.
           $process = Start-Process `
-              -FilePath "java" `
-              -ArgumentList "-jar", "`"\$jarPath`"" `
+              -FilePath 'java' `                     # В одинарных кавычках!
+              -ArgumentList '-jar', "$jarPath" `     # Без лишних обратных слэшей (``)
               -NoNewWindow `
               -PassThru `
               -RedirectStandardOutput "$env:TMP/sut-output.log"
@@ -68,7 +68,7 @@ jobs:
             Start-Sleep -Milliseconds 500
             $output = Get-Content "$env:TMP/sut-output.log" | Select-Object -Last 1
             if ($output -match 'Started .* in \d+\.\d+ seconds') {
-                Write-Host "🟢 Приложение сообщило о готовности."
+                Write-Host "🟢 Spring Boot сообщил о старте."
                 break;
             }
           }
@@ -100,16 +100,16 @@ jobs:
           Write-Host "⏳ Дополнительная пауза на 15 секунд..."
           Start-Sleep -Seconds 15
 
-      # ЭТАП 4: Запуск тестов 🎯
-      # ✅ ВАЖНО! Мы НЕ ПЕРЕДАЕМ переменную WEBDRIVER_CHROME_DRIVER вручную!
-      # Действие setup-chrome уже поставило её автоматически.
+      # ЭТАП 5. Запуск тестов 🎯
+      # ВАЖНО: Мы НЕ ПЕРЕДАЕМ переменную WEBDRIVER_CHROME_DRIVER вручную!
+      # Action setup-chrome уже поставил её автоматически в системные переменные ОС.
       - name: Run tests 🎯
         run: .\gradlew.bat test --no-daemon
         shell: cmd
 
-      # ЭТАП 5: Загрузка отчёта
+      # ЭТАП 6. Загрузка отчёта
       - name: Upload Test Report 🗃️
-        if: always() # Скачается даже при падении тестов
+        if: always() # Скачивается даже при падении тестов
         uses: actions/upload-artifact@v4
         with:
           name: test-reports
