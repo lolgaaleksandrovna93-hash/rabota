@@ -20,11 +20,16 @@ jobs:
           java-version: '11'
           distribution: 'temurin'
 
-      # Установка Chrome и драйвера через проверенный экшен
+      # ИСПРАВЛЕНИЕ: Используем проверенный экшен для установки Chrome
       - name: Install Google Chrome & Driver 🦊
         uses: browser-actions/setup-chrome@v1
         with:
           chrome-version: stable
+
+      - name: Verify Chrome & Driver Versions
+        run: |
+          echo "Chrome version: \$(chrome --version)"
+          echo "Driver path: \${{ env.CHROME_DRIVER_PATH }}"
 
       - name: Build project ✨
         run: .\gradlew.bat build --no-daemon
@@ -33,13 +38,16 @@ jobs:
         shell: pwsh
         run: |
           \$jarPath = "./build/libs/app-order.jar"
+          
           if (!(Test-Path \$jarPath)) {
             Write-Error "Jar file not found at \$jarPath"
             exit 1
           }
-          Start-Process -FilePath "java" -ArgumentList "-jar", "\$jarPath"
 
-          \$maxAttempts = 30
+          # Запускаем в фоне
+          Start-Process -FilePath "java" -ArgumentList "-jar", "\$jarPath" -NoNewWindow
+
+          \$maxAttempts = 40
           \$attempt = 0
           \$url = "http://localhost:9999"
 
@@ -54,17 +62,17 @@ jobs:
               Write-Host "⏳ Waiting for SUT... attempt $($attempt + 1)"
             }
             \$attempt++
-            Start-Sleep -Seconds 2
+            Start-Sleep -Seconds 3 # Увеличил паузу, SUT в CI может стартовать медленнее
           }
 
           if ($attempt -ge $maxAttempts) {
-            Write-Error "🛑 Failed to start SUT"
+            Write-Error "🛑 Failed to start SUT. Check logs above."
             exit 1
           }
 
       - name: Run tests 🎯
         env:
-          # Экшен browser-actions/setup-chrome задаёт эту переменную
+          # Экшен setup-chrome автоматически создает эту переменную
           WEBDRIVER_CHROME_DRIVER: \${{ env.CHROME_DRIVER_PATH }}
         run: .\gradlew.bat test --no-daemon
 
@@ -74,3 +82,4 @@ jobs:
         with:
           name: test-reports
           path: build/reports/tests/test/
+
