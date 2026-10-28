@@ -11,76 +11,80 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # ЭТАП 1. Подготовка окружения (код + JDK)
+      # ЭТАП 0: Подготовка окружения (код + JDK)
       - name: Checkout code 📁
         uses: actions/checkout@v4
 
       - name: Set up JDK 11 ☕️
-        uses: actions/actions/setup-java@v3 # Используем официальный action от GitHub
+        uses: actions/setup-java@v5
         with:
           java-version: '11'
           distribution: 'temurin'
-          cache: gradle # Кэшируем зависимости Gradle
+          cache: gradle
 
-      # ЭТАП 2. Установка браузера Chrome
+      # ЭТАП 1: Установка браузера Chrome
       - name: Install Chrome & Driver 🦊
         uses: browser-actions/setup-chrome@v1
         with:
           chrome-version: stable
 
-      # ЭТАП 3. Сборка проекта (получение JAR-файла из нестандартной папки artifacts/)
+      # ЭТАП 2: Сборка проекта (JAR будет в build/libs/)
       - name: Build SUT (Application) 📦
         run: .\gradlew.bat build -x test --no-daemon
         shell: cmd
 
-      # ЭТАП 4. Запуск приложения с ожиданием готовности 🚀
-      # ✅ ИСПРАВЛЕННЫЙ СКРИПТ ДЛЯ НЕСТАНДАРТНОЙ ПАПКИ ARTIFACTS
+      # ЭТАП 3: Запуск приложения с ожиданием готовности 🚀
       - name: Start SUT and wait for readiness 🚀
         shell: pwsh
         run: |
-          # Ждём появления артефакта после сборки
-          $maxWait = 60
-          while ($true) {
-            if (Test-Path "./artifacts/app-order.jar") { break }
-            Write-Host "⏳ Ожидаем создания JAR... попытка $($maxWait)"
-            Start-Sleep -Seconds 1
-            $maxWait--
-            if ($maxWait -eq 0) {
-              exit 1
-            }
+          # Автоматически находим JAR по маске app-order*.jar в build/libs
+          $jarFile = Get-ChildItem -Path "./build/libs/" -Filter "app-order*.jar" | Select-Object -First 1
+
+          if ($null -eq $jarFile) {
+            Write-Error "JAR file not found in build/libs/. Доступные файлы:"
+            Get-ChildItem -Path "./build/libs/" -Filter "*.jar" | ForEach-Object { Write-Host $_.Name }
+            exit 1
           }
 
-          # Запускаем приложение из папки artifacts
-          $jarPath = "./artifacts/app-order.jar"
-          Write-Host "🟢 Запускаем приложение из $jarPath" # Для логов
+          $jarPath = $jarFile.FullName
+          Write-Host "🟢 Запускаем приложение из: $jarPath"
 
-          # ❗️ ИСПРАВИЛ СИНТАКСИС! Теперь путь передаётся корректно.
+          # Запускаем процесс в фоне
           $process = Start-Process `
-              -FilePath 'java' `                     # В одинарных кавычках!
-              -ArgumentList '-jar', "$jarPath" `     # Без лишних обратных слэшей (``)
+              -FilePath "java" `
+              -ArgumentList "-jar", "$jarPath" `
               -NoNewWindow `
               -PassThru `
               -RedirectStandardOutput "$env:TMP/sut-output.log"
 
-          # Ждём сообщение Spring Boot о старте
-          $maxWaitSpring = 90
-          while ($true) {
+          # Ждём сообщение Spring Boot о готовности
+          $maxWaitSpring = 120
+          $attempt = 0
+          while ($attempt -lt $maxWaitSpring) {
             Start-Sleep -Milliseconds 500
-            $output = Get-Content "$env:TMP/sut-output.log" | Select-Object -Last 1
+            $output = Get-Content "$env:TMP/sut-output.log" -Tail 1
             if ($output -match 'Started .* in \d+\.\d+ seconds') {
-                Write-Host "🟢 Spring Boot сообщил о старте."
-                break;
+                Write-Host "✅ Приложение сообщило о готовности: $output"
+                break
             }
+            $attempt++
           }
 
-          # Проверка порта TCP
-          $maxAttempts = 60
+          if ($attempt -ge $maxWaitSpring) {
+            Write-Error "🛑 Не дождались сообщения о готовности приложения."
+            Get-Content "$env:TMP/sut-output.log" | Select-Object -Last 50 | ForEach-Object { Write-Host $_ }
+            Stop-Process -Id $process.Id -Force
+            exit 1
+          }
+
+          # Проверка порта TCP (обрати внимание: $tcp.Close без скобок!)
+          $maxAttempts = 120
           $attempt = 0
           while ($attempt -lt $maxAttempts) {
             try {
               $tcp = New-Object System.Net.Sockets.TcpClient
               $tcp.Connect("localhost", 9999)
-              $tcp.Close()
+              $tcp.Close
               Write-Host "🟢 Порт 9999 открыт!"
               break
             } catch {
@@ -92,24 +96,23 @@ jobs:
 
           if ($attempt -ge $maxAttempts) {
             Write-Error "🛑 Не удалось запустить SUT. Порт 9999 не открылся."
+            Get-Content "$env:TMP/sut-output.log" | Select-Object -Last 50 | ForEach-Object { Write-Host $_ }
             Stop-Process -Id $process.Id -Force
             exit 1
           }
 
-          # Пауза перед тестами для полной инициализации контекста
-          Write-Host "⏳ Дополнительная пауза на 15 секунд..."
-          Start-Sleep -Seconds 15
+          # Финальная пауза для полной инициализации контекста Spring
+          Write-Host "⏳ Дополнительная пауза на 20 секунд..."
+          Start-Sleep -Seconds 20
 
-      # ЭТАП 5. Запуск тестов 🎯
-      # ВАЖНО: Мы НЕ ПЕРЕДАЕМ переменную WEBDRIVER_CHROME_DRIVER вручную!
-      # Action setup-chrome уже поставил её автоматически в системные переменные ОС.
+      # ЭТАП 4: Запуск тестов 🎯
       - name: Run tests 🎯
         run: .\gradlew.bat test --no-daemon
         shell: cmd
 
-      # ЭТАП 6. Загрузка отчёта
+      # ЭТАП 5: Загрузка отчёта
       - name: Upload Test Report 🗃️
-        if: always() # Скачивается даже при падении тестов
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-reports
