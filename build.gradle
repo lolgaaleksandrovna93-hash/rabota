@@ -2,27 +2,29 @@ plugins {
     id 'java'
 }
 
-group = 'ru.netology'
-version = '1.0-SNAPSHOT'
-sourceCompatibility = JavaVersion.VERSION_11
+group 'ru.netology'
+version '1.0-SNAPSHOT'
+
+java {
+    sourceCompatibility = 11
+}
+
+compileJava.options.encoding = "UTF-8"
+compileTestJava.options.encoding = "UTF-8"
 
 repositories {
     mavenCentral()
 }
 
 dependencies {
-    testImplementation platform('org.junit:junit-bom:5.10.2')
-    testImplementation 'org.junit.jupiter:junit-jupiter-api'
-    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
-    
-    // Selenium (можно использовать либо эту версию, либо OpenSelenium)
-    testImplementation 'org.seleniumhq.selenium:selenium-java:4.29.0' 
-
-    // Альтернатива — библиотека OpenSelenium (рекомендуется)
-//     testImplementation group: 'org.openselenium', name: 'webdriver', version: '6.8.3'
-//     testImplementation group: 'org.openselenium', name: 'extensions', version: '6.8.3'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testImplementation 'org.seleniumhq.selenium:selenium-java:4.29.0'
+    // WebDriverManager можно оставить, но в CI мы используем browser-actions + Selenium Manager
+    testImplementation 'io.github.bonigarcia:webdrivermanager:5.9.3'
 }
 
 test {
-    useJUnitPlatform()  
+    useJUnitPlatform()
+    // Если понадобится передавать опции Chrome через systemProperty
+    systemProperty 'chromeoptions.prefs', System.getProperty('chromeoptions.prefs', "profile.password_manager_leak_detection=false")
 }
