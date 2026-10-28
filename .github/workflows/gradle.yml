@@ -1,4 +1,4 @@
-name: Java CI with Gradle (Selenium Only)
+name: Java CI with Gradle (Pure Selenium)
 
 on:
   push:
@@ -27,13 +27,12 @@ jobs:
           chrome-version: stable
 
       - name: Build project 📦
-        # Просто компилируем проект и скачиваем зависимости
+        # Компилируем проект и скачиваем зависимости
         run: .\gradlew.bat build -x test --no-daemon
         shell: cmd
 
       - name: Run Selenium Tests 🎯
-        # Запускаем тесты. 
-        # ВАЖНО: В тестах URL должен быть прописан жестко (например, http://demoqa.com) 
+        # ВАЖНО: В тестах URL должен быть прописан жестко (например, на демо-сайт)
         # или браться из переменной окружения, если это твой локальный сервер.
         run: .\gradlew.bat test --no-daemon
         shell: cmd
