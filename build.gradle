@@ -1,12 +1,16 @@
 plugins {
     id 'java'
+    // ЭТО САМОЕ ВАЖНОЕ: этот плагин делает JAR исполняемым и добавляет сервер
+    id 'org.springframework.boot' version '3.2.0'
+    // Этот плагин управляет версиями библиотек Spring
+    id 'io.spring.dependency-management' version '1.1.4'
 }
 
-group 'ru.netology'
-version '1.0-SNAPSHOT'
+group = 'ru.netology'
+version = '1.0-SNAPSHOT'
 
 java {
-    sourceCompatibility = 11
+    sourceCompatibility = '11'
 }
 
 compileJava.options.encoding = "UTF-8"
@@ -17,9 +21,12 @@ repositories {
 }
 
 dependencies {
+    // ЭТО ДАЕТ ВЕБ-СЕРВЕР (Tomcat) и возможность слушать порт 9999
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+
+    // Тесты (JUnit + Selenium)
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
     testImplementation 'org.seleniumhq.selenium:selenium-java:4.29.0'
-    // WebDriverManager можно оставить, но в CI мы используем browser-actions + Selenium Manager
     testImplementation 'io.github.bonigarcia:webdrivermanager:5.9.3'
 }
 
