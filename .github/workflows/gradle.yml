@@ -27,6 +27,7 @@ jobs:
           chrome-version: stable
 
       - name: Build SUT (Application) 📦
+        # Важно: эта команда должна создать ИСПОЛНЯЕМЫЙ JAR (см. инструкцию ниже)
         run: .\gradlew.bat build -x test --no-daemon
         shell: cmd
 
@@ -36,7 +37,7 @@ jobs:
           @echo off
           setlocal enabledelayedexpansion
 
-          REM 1. Поиск JAR файла (любой .jar в build/libs)
+          REM 1. Поиск JAR файла
           echo [INFO] Поиск JAR-файла в build/libs...
           set "JAR_FILE="
           for %%f in (build\libs\*.jar) do (
@@ -52,54 +53,33 @@ jobs:
           )
           echo [SUCCESS] Найден файл: %JAR_FILE%
 
-          REM 2. Запуск приложения в фоне
-          echo [INFO] Запуск приложения...
-          start /B java -jar "%JAR_FILE%" > "%TEMP%\sut-output.log" 2>&1
-          set "PID=!ERRORLEVEL!"
+          REM 2. Запуск приложения
+          echo [INFO] Запуск приложения в фоне...
+          
+          REM ВАЖНО: Убрали "> %TEMP%\sut-output.log 2>&1" из команды start.
+          REM В Windows start /B не поддерживает перенаправление потоков, это вызывало краш.
+          REM Логи Java теперь пишутся прямо в консоль шага GitHub Actions.
+          start /B java -jar "%JAR_FILE%"
 
-          REM Небольшая пауза, чтобы файл лога точно создался
+          REM Небольшая пауза, чтобы приложение начало инициализацию
           timeout /t 5 /nobreak >nul
 
-          REM 3. Ожидание строки "Started ... in X.X seconds"
-          echo [INFO] Ожидание сообщения о старте Spring Boot...
-          set "MAX_WAIT=120"
-          set "COUNT=0"
-
-          :wait_started
-          if !COUNT! GEQ !MAX_WAIT! (
-            echo [ERROR] Таймаут: приложение не запустилось за 2 минуты.
-            if exist "%TEMP%\sut-output.log" (
-              echo Последние 50 строк лога:
-              more +50 "%TEMP%\sut-output.log"
-            )
-            taskkill /F /PID !PID! 2>nul
-            exit /b 1
-          )
-
-          timeout /t 1 /nobreak >nul
-          set /a COUNT+=1
-
-          findstr /R /C:"Started .* in [0-9]\.[0-9]* seconds" "%TEMP%\sut-output.log" >nul
-          if not errorlevel 1 (
-            echo [SUCCESS] Приложение сообщило о готовности.
-            goto :check_port
-          )
-          goto :wait_started
-
-          REM 4. Проверка порта 9999
-          :check_port
+          REM 3. Проверка порта 9999 (основной индикатор готовности Spring Boot)
           echo [INFO] Проверка доступности порта 9999...
           set "MAX_ATTEMPTS=60"
           set "ATTEMPT=0"
 
           :wait_port
           if !ATTEMPT! GEQ !MAX_ATTEMPTS! (
-            echo [ERROR] Таймаут: порт 9999 не открылся.
-            taskkill /F /PID !PID! 2>nul
+            echo [ERROR] Таймаут: порт 9999 не открылся за 2 минуты.
+            echo Проверьте, что server.port=9999 в application.properties.
+            echo Проверьте логи выше — возможно, приложение упало из-за ошибки запуска (no main class).
             exit /b 1
           )
 
+          REM Проверка порта через PowerShell (это единственный надежный способ в Windows без установки curl/telnet)
           powershell -Command "try { $c = New-Object System.Net.Sockets.TcpClient('localhost', 9999); $c.Close(); exit 0 } catch { exit 1 }"
+          
           if not errorlevel 1 (
             echo [SUCCESS] Порт 9999 открыт! SUT готов к работе.
             goto :final_pause
@@ -110,9 +90,8 @@ jobs:
           timeout /t 2 /nobreak >nul
           goto :wait_port
 
-          REM 5. Финальная пауза
           :final_pause
-          echo [INFO] Финальная пауза 10 секунд для полной инициализации...
+          echo [INFO] Финальная пауза 10 секунд для полной инициализации контекста...
           timeout /t 10 /nobreak >nul
           echo [SUCCESS] SUT полностью готов к запуску тестов!
 
@@ -126,4 +105,3 @@ jobs:
         with:
           name: test-reports
           path: build/reports/tests/test/
-
