@@ -8,7 +8,7 @@ version = '1.0-SNAPSHOT'
 
 java {
     // Selenium и современные тесты лучше работают на Java 17+
-    sourceCompatibility = '17'
+    sourceCompatibility = '11'
 }
 
 compileJava.options.encoding = "UTF-8"
