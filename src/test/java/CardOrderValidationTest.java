@@ -37,8 +37,7 @@ public class CardOrderValidationTest {
         options.addArguments("--disable-blink-features=AutomationControlled");
 
         driver = new ChromeDriver(options);
-        // УБРАЛИ driver.manage().window().maximize(); — не нужно в headless
-        wait = new WebDriverWait(driver, Duration.ofSeconds(60)); // Увеличили таймаут
+        wait = new WebDriverWait(driver, Duration.ofSeconds(60));
         System.out.println("[SETUP] Chrome started successfully.");
     }
 
@@ -116,3 +115,4 @@ public class CardOrderValidationTest {
         System.out.println("✅ ТЕСТ ПРОЙДЕН!");
     }
 }
+
