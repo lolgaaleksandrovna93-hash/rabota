@@ -1,13 +1,14 @@
 plugins {
     id 'java'
     id 'idea'
+    id 'jacoco'
 }
 
 group = 'com.example'
 version = '1.0-SNAPSHOT'
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_11
+    sourceCompatibility = JavaVersion.VERSION_1
     targetCompatibility = JavaVersion.VERSION_11
 }
 
@@ -16,31 +17,19 @@ repositories {
 }
 
 dependencies {
-    // JUnit 5
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.0'
-
-    // Selenium
     testImplementation 'org.seleniumhq.selenium:selenium-java:4.25.0'
-    // Chrome driver будет подтягиваться через Selenium Manager (не нужно ставить отдельно)
-
-    // AssertJ (опционально, если захочешь заменить assertTrue на более читаемые ассерты)
-    // testImplementation 'org.assertj:assertj-core:3.24.2'
 }
 
 test {
     useJUnitPlatform()
     maxParallelForks = Runtime.runtime.availableProcessors()
-    systemProperty 'APP_URL', System.getProperty('APP_URL') ?: 'http://localhost:9999'
     environment 'APP_URL', System.getenv('APP_URL') ?: 'http://localhost:9999'
 
     testLogging {
         events 'passed', 'failed', 'skipped'
         showStandardStreams = true
     }
-}
-
-tasks.named('test') {
-    finalizedBy 'jacocoTestReport'
 }
 
 jacoco {
