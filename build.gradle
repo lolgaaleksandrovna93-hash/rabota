@@ -1,16 +1,18 @@
 plugins {
     id 'java'
+    // ЭТА СТРОКА ДЕЛАЕТ JAR ИСПОЛНЯЕМЫМ (добавляет Main-Class)
+    id 'org.springframework.boot' version '3.2.0'
+    // Управляет версиями зависимостей Spring
+    id 'io.spring.dependency-management' version '1.1.4'
 }
 
-group 'ru.netology'
-version '1.0-SNAPSHOT'
+group = 'ru.netology'
+version = '1.0-SNAPSHOT'
 
-// используем 11 версию языка
 java {
-    sourceCompatibility = 11
+    sourceCompatibility = '11'
 }
 
-// кодировка файлов (если используете русский язык в файлах)
 compileJava.options.encoding = "UTF-8"
 compileTestJava.options.encoding = "UTF-8"
 
@@ -19,6 +21,10 @@ repositories {
 }
 
 dependencies {
+    // ЭТО ДАЕТ ВЕБ-СЕРВЕР (Tomcat) и возможность слушать порт 9999
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+
+    // Тесты (JUnit + Selenium + WebDriverManager)
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
     testImplementation 'org.seleniumhq.selenium:selenium-java:4.29.0'
     testImplementation 'io.github.bonigarcia:webdrivermanager:5.9.3'
@@ -26,6 +32,6 @@ dependencies {
 
 test {
     useJUnitPlatform()
-    // свойство chromeoptions.prefs используется для задания настроек браузера в проектах на основе Selenide, выключаем менеджер паролей 
+    // Передаем настройки для Chrome, если нужно
     systemProperty 'chromeoptions.prefs', System.getProperty('chromeoptions.prefs', "profile.password_manager_leak_detection=false")
 }
