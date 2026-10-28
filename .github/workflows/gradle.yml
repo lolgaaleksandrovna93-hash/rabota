@@ -20,16 +20,15 @@ jobs:
           java-version: '11'
           distribution: 'temurin'
 
-      # ИСПРАВЛЕНИЕ: Используем проверенный экшен для установки Chrome
       - name: Install Google Chrome & Driver 🦊
         uses: browser-actions/setup-chrome@v1
         with:
           chrome-version: stable
 
-      - name: Verify Chrome & Driver Versions
+      - name: Verify Chrome Installation
         run: |
-          echo "Chrome version: \$(chrome --version)"
-          echo "Driver path: \${{ env.CHROME_DRIVER_PATH }}"
+          echo "Chrome version: $(chrome --version)"
+          echo "Driver path: ${{ env.CHROME_DRIVER_PATH }}"
 
       - name: Build project ✨
         run: .\gradlew.bat build --no-daemon
@@ -37,43 +36,43 @@ jobs:
       - name: Start SUT and wait for readiness 🚀
         shell: pwsh
         run: |
-          \$jarPath = "./build/libs/app-order.jar"
+          $jarPath = "./build/libs/app-order.jar"
           
-          if (!(Test-Path \$jarPath)) {
-            Write-Error "Jar file not found at \$jarPath"
+          if (!(Test-Path $jarPath)) {
+            Write-Error "Jar file not found at $jarPath"
             exit 1
           }
 
-          # Запускаем в фоне
-          Start-Process -FilePath "java" -ArgumentList "-jar", "\$jarPath" -NoNewWindow
+          Start-Process -FilePath "java" -ArgumentList "-jar", $jarPath -NoNewWindow
 
-          \$maxAttempts = 40
-          \$attempt = 0
-          \$url = "http://localhost:9999"
+          $maxAttempts = 90
+          $attempt = 0
+          $url = "http://localhost:9999"
 
           while ($attempt -lt $maxAttempts) {
             try {
               $response = Invoke-WebRequest -Uri $url -Method Head -TimeoutSec 5 -ErrorAction Stop
-              if (\$response.StatusCode -eq 200) {
-                Write-Host "🟢 SUT is ready!"
+              if ($response.StatusCode -eq 200) {
+                Write-Host "🟢 SUT is ready (status 200)"
                 break
               }
             } catch {
-              Write-Host "⏳ Waiting for SUT... attempt $($attempt + 1)"
+              Write-Host "⏳ Waiting for SUT... attempt $($attempt + 1) (error: $($_.Exception.Message))"
             }
-            \$attempt++
-            Start-Sleep -Seconds 3 # Увеличил паузу, SUT в CI может стартовать медленнее
+            $attempt++
+            Start-Sleep -Seconds 2
           }
 
           if ($attempt -ge $maxAttempts) {
-            Write-Error "🛑 Failed to start SUT. Check logs above."
+            Write-Error "🛑 Failed to start SUT. Port open but no HTTP 200 response."
             exit 1
           }
+          
+          Start-Sleep -Seconds 10
 
       - name: Run tests 🎯
         env:
-          # Экшен setup-chrome автоматически создает эту переменную
-          WEBDRIVER_CHROME_DRIVER: \${{ env.CHROME_DRIVER_PATH }}
+          WEBDRIVER_CHROME_DRIVER: ${{ env.CHROME_DRIVER_PATH }}
         run: .\gradlew.bat test --no-daemon
 
       - name: Upload Test Report 🗃️
@@ -82,4 +81,3 @@ jobs:
         with:
           name: test-reports
           path: build/reports/tests/test/
-
