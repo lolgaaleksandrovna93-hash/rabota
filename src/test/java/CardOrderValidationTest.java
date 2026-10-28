@@ -12,9 +12,6 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 
 import java.time.Duration;
 
-// УДАЛИТЕ ЭТУ ИМПОРТНУЮ СТРОКУ:
-// import static io.github.bonigarcia.wdm.WebDriverManager.chromedriver;
-
 public class CardOrderValidationTest {
 
     private static WebDriver driver;
@@ -23,18 +20,26 @@ public class CardOrderValidationTest {
     @BeforeAll
     static void setupAll() {
         System.out.println("=== CardOrderValidationTest: запуск драйвера ===");
-        
+
+        String driverPath = System.getenv("WEBDRIVER_CHROME_DRIVER");
+        if (driverPath != null && !driverPath.isEmpty()) {
+            System.setProperty("webdriver.chrome.driver", driverPath);
+            System.out.println("[SETUP] Using driver from env: " + driverPath);
+        } else {
+            System.out.println("[SETUP] Driver path not set — relying on Selenium Manager.");
+        }
+
         ChromeOptions options = new ChromeOptions();
         options.addArguments("--headless=new");
         options.addArguments("--no-sandbox");
         options.addArguments("--disable-dev-shm-usage");
         options.addArguments("--window-size=1920,1080");
+        options.addArguments("--disable-blink-features=AutomationControlled");
 
-        // ВАЖНО: Убрали chromedriver().setup()
         driver = new ChromeDriver(options);
-        
-        driver.manage().window().maximize();
-        wait = new WebDriverWait(driver, Duration.ofSeconds(30));
+        // УБРАЛИ driver.manage().window().maximize(); — не нужно в headless
+        wait = new WebDriverWait(driver, Duration.ofSeconds(60)); // Увеличили таймаут
+        System.out.println("[SETUP] Chrome started successfully.");
     }
 
     @AfterAll
@@ -47,10 +52,12 @@ public class CardOrderValidationTest {
 
     @Test
     void shouldShowValidationErrorWhenNameIsInvalid() {
-        // ... (весь остальной код теста остается БЕЗ ИЗМЕНЕНИЙ) ...
         System.out.println("1. Открываем страницу...");
         driver.get("http://localhost:9999");
-        
+
+        System.out.println("[TEST] Current URL: " + driver.getCurrentUrl());
+        System.out.println("[TEST] Page title: " + driver.getTitle());
+
         WebElement nameFieldWrapper = wait.until(ExpectedConditions.visibilityOfElementLocated(
                 By.cssSelector("[data-test-id='name']")));
 
