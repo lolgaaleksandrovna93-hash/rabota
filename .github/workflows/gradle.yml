@@ -1,4 +1,4 @@
-name: Java CI with Gradle
+name: Java CI with Gradle (CMD, minimal SUT)
 
 on:
   push:
@@ -11,67 +11,61 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout code 📁
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up JDK ☕
-        uses: actions/setup-java@v3
+      - name: Set up JDK
+        uses: actions/setup-java@v5
         with:
-          java-version: '17'
+          java-version: '11'
           distribution: 'temurin'
 
-      - name: Build application 🏗️
+      - name: Build project
+        shell: cmd
         run: .\gradlew.bat build -x test --no-daemon
 
-      # Копируем jar в корень, чтобы было проще запускать
-      - name: Copy jar to root
-        shell: powershell
-        run: |
-          $jars = Get-ChildItem -Path "build/libs" -Filter "*order*.jar"
-          if ($jars.Count -eq 0) {
-              throw "No jar file found in build/libs matching '*order*.jar'"
-          }
-          Copy-Item -Path $jars[0].FullName -Destination "app-order.jar" -Force
-          Write-Host "Copied jar: $($jars[0].Name)"
+      - name: Start SUT
+        id: start-sut
+        shell: cmd
+        # Запускаем в фоне; логи пишем в файл
+        run: start /B java -cp build\classes\java\main com.example.sut.SutServer > sut.log 2>&1
 
-      - name: Start application 🚀
-        id: start-app
-        shell: powershell
+      - name: Wait for SUT to be ready
+        shell: cmd
         run: |
-          # Запускаем приложение в фоне и сохраняем PID
-          $process = Start-Process -FilePath java -ArgumentList "-jar", "app-order.jar", "-Dserver.port=9999" -PassThru
-          echo "APP_PID=$($process.Id)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "Application started with PID $($process.Id)"
+          set MAX_TRIES=60
+          set TRY=0
+          :loop
+          if %TRY% GEQ %MAX_TRIES% (
+            echo SUT did not start in time.
+            exit /b 1
+          )
+          powershell -Command "try { Invoke-WebRequest -Uri http://localhost:9999 -Method Head -TimeoutSec 5 } catch { exit 1 }"
+          if %ERRORLEVEL% EQU 0 (
+            echo SUT is ready.
+            goto :end
+          )
+          echo Waiting for SUT... try %TRY%
+          timeout /t 2 /nobreak >nul
+          set /a TRY+=1
+          goto :loop
+          :end
 
-      - name: Wait for application to be ready ⏳
-        shell: powershell
-        run: |
-          $maxTries = 60
-          $try = 0
-          while ($try -lt $maxTries) {
-            try {
-              $response = Invoke-WebRequest -Uri "http://localhost:9999" -Method Head -TimeoutSec 5
-              if ($response.StatusCode -eq 200) {
-                Write-Host "✅ Application is ready."
-                break
-              }
-            } catch {
-              Write-Host "Waiting for application... try $try"
-              Start-Sleep -Seconds 2
-            }
-            $try++
-          }
-          if ($try -eq $maxTries) {
-            throw "❌ Application did not start in time."
-          }
-
-      - name: Run tests 🧪
+      - name: Run tests
+        shell: cmd
         run: .\gradlew.bat test --no-daemon
         env:
           APP_URL: "http://localhost:9999"
 
-      - name: Stop application 🛑
+      - name: Stop SUT
         if: always()
-        shell: powershell
-        run: |
-          if (Test-Path
+        shell: cmd
+        run: taskkill /F /IM java.exe || echo No java process to kill
+
+      - name: Upload test reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-reports
+          path: build/reports/tests/test/
+          retention-days: 7
