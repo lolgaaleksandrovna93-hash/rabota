@@ -20,11 +20,11 @@ jobs:
           java-version: '11'
           distribution: 'temurin'
 
+      # Установка Chrome и драйвера через проверенный экшен
       - name: Install Google Chrome & Driver 🦊
-        uses: actions/setup-chromium@v1
+        uses: browser-actions/setup-chrome@v1
         with:
-          browser: chrome-stable
-          driver: chromedriver
+          chrome-version: stable
 
       - name: Build project ✨
         run: .\gradlew.bat build --no-daemon
@@ -33,12 +33,10 @@ jobs:
         shell: pwsh
         run: |
           \$jarPath = "./build/libs/app-order.jar"
-          
           if (!(Test-Path \$jarPath)) {
             Write-Error "Jar file not found at \$jarPath"
             exit 1
           }
-
           Start-Process -FilePath "java" -ArgumentList "-jar", "\$jarPath"
 
           \$maxAttempts = 30
@@ -66,7 +64,8 @@ jobs:
 
       - name: Run tests 🎯
         env:
-          WEBDRIVER_CHROME_DRIVER: \${{ steps.setup-chrome.outputs.driver-path }}
+          # Экшен browser-actions/setup-chrome задаёт эту переменную
+          WEBDRIVER_CHROME_DRIVER: \${{ env.CHROME_DRIVER_PATH }}
         run: .\gradlew.bat test --no-daemon
 
       - name: Upload Test Report 🗃️
@@ -75,4 +74,3 @@ jobs:
         with:
           name: test-reports
           path: build/reports/tests/test/
-
