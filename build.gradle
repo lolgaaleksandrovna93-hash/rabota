@@ -1,32 +1,55 @@
 plugins {
     id 'java'
-    // УБРАНО: id 'org.springframework.boot' и 'io.spring.dependency-management'
+    id 'idea'
 }
 
-group = 'ru.netology'
+group = 'com.example'
 version = '1.0-SNAPSHOT'
 
 java {
-    // Selenium и современные тесты лучше работают на Java 17+
-    sourceCompatibility = '11'
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
 }
-
-compileJava.options.encoding = "UTF-8"
-compileTestJava.options.encoding = "UTF-8"
 
 repositories {
     mavenCentral()
 }
 
 dependencies {
-    // УБРАНО: spring-boot-starter-web
-    
-    // Тесты
-    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
-    testImplementation 'org.seleniumhq.selenium:selenium-java:4.29.0'
-    testImplementation 'io.github.bonigarcia:webdrivermanager:5.9.3'
+    // JUnit 5
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.0'
+
+    // Selenium
+    testImplementation 'org.seleniumhq.selenium:selenium-java:4.25.0'
+    // Chrome driver будет подтягиваться через Selenium Manager (не нужно ставить отдельно)
+
+    // AssertJ (опционально, если захочешь заменить assertTrue на более читаемые ассерты)
+    // testImplementation 'org.assertj:assertj-core:3.24.2'
 }
 
 test {
     useJUnitPlatform()
+    maxParallelForks = Runtime.runtime.availableProcessors()
+    systemProperty 'APP_URL', System.getProperty('APP_URL') ?: 'http://localhost:9999'
+    environment 'APP_URL', System.getenv('APP_URL') ?: 'http://localhost:9999'
+
+    testLogging {
+        events 'passed', 'failed', 'skipped'
+        showStandardStreams = true
+    }
+}
+
+tasks.named('test') {
+    finalizedBy 'jacocoTestReport'
+}
+
+jacoco {
+    toolVersion = '0.8.13'
+}
+
+jacocoTestReport {
+    reports {
+        xml.required = true
+        html.required = true
+    }
 }
