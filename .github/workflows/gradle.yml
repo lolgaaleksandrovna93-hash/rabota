@@ -1,4 +1,4 @@
-name: Java CI with Gradle (CMD, minimal SUT)
+name: Java CI with Gradle (CMD, fixed SUT start)
 
 on:
   push:
@@ -17,7 +17,7 @@ jobs:
       - name: Set up JDK
         uses: actions/setup-java@v5
         with:
-          java-version: '11'
+          java-version: '11'          # Важно: совпадает с build.gradle
           distribution: 'temurin'
 
       - name: Build project
@@ -27,8 +27,8 @@ jobs:
       - name: Start SUT
         id: start-sut
         shell: cmd
-        # Запускаем в фоне; логи пишем в файл
-        run: start /B java -cp build\classes\java\main com.example.sut.SutServer > sut.log 2>&1
+        # Убрали > sut.log 2>&1 — это и вызывало ошибку Input redirection
+        run: start /B java -cp build\classes\java\main com.example.sut.SutServer
 
       - name: Wait for SUT to be ready
         shell: cmd
@@ -69,3 +69,4 @@ jobs:
           name: test-reports
           path: build/reports/tests/test/
           retention-days: 7
+
